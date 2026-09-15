@@ -1,0 +1,12 @@
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.venv/
+build/
+dist/
+*.egg-info/
+
+# Ad-hoc local runs; canonical result files can be force-added deliberately.
+results/local-*
+
+.ruff_cache/
