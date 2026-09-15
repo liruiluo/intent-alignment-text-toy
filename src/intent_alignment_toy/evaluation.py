@@ -24,6 +24,7 @@ def build_policy_prompt(task: Task, env: TextNavigationEnv, actions: list[str]) 
 规则：
 - 起点是 (0, 0)。
 - 每次动作恰好移动 1 米。
+- 动作与坐标变化：UP=(0,+1)，DOWN=(0,-1)，LEFT=(-1,0)，RIGHT=(+1,0)。
 - 可用动作只有 UP、DOWN、LEFT、RIGHT。
 - 环境到达目标后会自动结束。
 - 你必须在给定动作预算内完成任务。

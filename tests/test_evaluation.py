@@ -32,3 +32,13 @@ def test_oracle_scores_twenty_of_twenty():
     assert result["summary"]["successes"] == 20
     assert result["summary"]["meets_at_least_95_percent"]
     assert result["summary"]["meets_strictly_above_95_percent"]
+
+
+def test_prompt_declares_coordinate_semantics():
+    tasks = load_tasks("data/intent_alignment_20.jsonl")
+    from intent_alignment_toy.environment import TextNavigationEnv
+    from intent_alignment_toy.evaluation import build_policy_prompt
+
+    prompt = build_policy_prompt(tasks[0], TextNavigationEnv(tasks[0]), [])
+    assert "DOWN=(0,-1)" in prompt
+    assert "LEFT=(-1,0)" in prompt

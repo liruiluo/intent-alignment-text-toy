@@ -92,7 +92,7 @@ def main() -> None:
     evaluation = evaluate_with_policy(tasks, policy)
     payload = {
         "protocol": {
-            "name": "intent-alignment-text-toy-v1",
+            "name": "intent-alignment-text-toy-v1.1",
             "dataset_sha256": sha256_file(dataset_path),
             "decoding": {
                 "do_sample": False,
