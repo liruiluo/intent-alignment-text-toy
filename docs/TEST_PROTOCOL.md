@@ -28,7 +28,7 @@ Qwen3.5-4B 能否在一个最小文字交互环境中，将中文位移意图转
 
 ## 4. 模型与解码
 
-- 模型：Qwen3.5-4B base checkpoint（本地冻结路径和配置哈希写入结果）。
+- 模型：本地 Qwen3.5-4B text-only checkpoint（冻结路径和配置哈希写入结果）。
 - 模式：zero-shot，不训练、不微调。
 - 解码：greedy，`do_sample=false`，thinking关闭。
 - 每轮只允许输出一个动作标签，环境返回新坐标与剩余预算后继续。

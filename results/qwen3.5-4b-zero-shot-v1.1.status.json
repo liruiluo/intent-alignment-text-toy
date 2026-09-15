@@ -1,0 +1,11 @@
+{
+  "run_id": "qwen35-4b-zero-shot-v1.1-20260915-172157",
+  "status": "complete",
+  "source_commit": "3eaafbb52d93c6a014fc8edf98cba3ab070daaac",
+  "successes": 19,
+  "total": 20,
+  "success_rate": 0.95,
+  "result_sha256": "517e0353be4b9b35f8f66a0e575761c2541a582861e3d4466866e905a8a122eb",
+  "log_sha256": "d0ab9118da55853b8cbd37f2fe8564fc9045124f6cebb4b54deedac5986cf5ea",
+  "finished_at": "2026-09-15T09:24:47.184192+00:00"
+}
