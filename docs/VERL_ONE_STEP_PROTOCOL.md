@@ -27,7 +27,9 @@
 
 - veRL：v0.9.0，commit `483b8a009ba3a97563edee3a19887e4862b8094a`。
 - 运行依赖包含该版本 `requirements.txt` 固定的 `TransferQueue==0.1.8`；入口会在启动 Ray 前校验版本。
-- rollout 使用 veRL 原生支持的 async vLLM backend（本次冻结为 `vllm==0.24.0`）。
+- rollout 使用 veRL 原生支持的 async SGLang backend（本次冻结为 `sglang==0.5.12`），Qwen3.5 hybrid GDN 使用 Triton attention backend，sampling backend 使用 PyTorch。
+- B300 JIT 使用 CUDA 13 toolkit，并显式加入同一 Python runtime 的 CUDA 13 动态库目录。
+- 模型使用完整 `Qwen3.5-4B` checkpoint；不再使用剥离视觉配置的 text-only 转换副本。
 - Ray 临时目录使用 `/tmp` 下的短 run-scoped 路径，避免长实验路径超过 Linux AF_UNIX socket 长度上限。
 - 自定义类只实现环境 wrapper：`IntentAlignmentAgentLoop(AgentLoopBase)`。
 - 交互链为 `policy action -> env.step -> observation -> 下一轮 policy`。

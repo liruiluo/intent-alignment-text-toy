@@ -22,9 +22,15 @@ EXPECTED_DECODING = {
     "thinking": False,
 }
 EXPECTED_BATCH_SIZE = 100
-EXPECTED_MODEL_CONFIG_SHA256 = (
-    "496d39ff3964cea8009c004e5d89fbd7801526992f699ff3f2934b12cb7e8892"
+EXPECTED_BASE_MODEL_CONFIG_SHA256 = (
+    "ddc63e1c717afa86c865bb5e01313d89d72bb53b97ad4a8a03ba8510c0621670"
 )
+EXPECTED_MODEL_CONFIG_FINGERPRINT = {
+    "class": "Qwen3_5Config",
+    "model_type": "qwen3_5",
+    "architectures": ["Qwen3_5ForConditionalGeneration"],
+    "sha256": "59a96f1b0661530c8c919d4529ece05245e106b30c2ac46e4a0f0c4be9f6cc78",
+}
 EXPECTED_TOKENIZER_FINGERPRINT = {
     "class": "TokenizersBackend",
     "vocab_size": 248077,
@@ -78,13 +84,15 @@ def weight_digests(payload: dict[str, Any], label: str) -> dict[str, str]:
     files = payload.get("model", {}).get("weights", {}).get("files", [])
     if not files:
         raise ValueError(f"{label}: weight manifest is empty")
-    digests = {item["name"]: item["sha256"] for item in files}
+    digests = {item.get("shard_id", item["name"]): item["sha256"] for item in files}
     if len(digests) != len(files):
-        raise ValueError(f"{label}: duplicate weight filenames")
+        raise ValueError(f"{label}: duplicate logical weight shards")
     return digests
 
 
-def validate_payload(payload: dict[str, Any], label: str) -> dict[str, dict[str, Any]]:
+def validate_payload(
+    payload: dict[str, Any], label: str, *, require_base_config: bool
+) -> dict[str, dict[str, Any]]:
     protocol = payload.get("protocol", {})
     expected_tasks = frozen_tasks()
     checks = {
@@ -132,8 +140,10 @@ def validate_payload(payload: dict[str, Any], label: str) -> dict[str, dict[str,
         raise ValueError(f"{label}: summary success rate is inconsistent")
 
     model = payload.get("model", {})
-    if model.get("config_sha256") != EXPECTED_MODEL_CONFIG_SHA256:
-        raise ValueError(f"{label}: model config is not the frozen Qwen3.5-4B config")
+    if require_base_config and model.get("config_sha256") != EXPECTED_BASE_MODEL_CONFIG_SHA256:
+        raise ValueError(f"{label}: model config is not the frozen base Qwen3.5-4B config")
+    if model.get("config_fingerprint") != EXPECTED_MODEL_CONFIG_FINGERPRINT:
+        raise ValueError(f"{label}: semantic model config fingerprint drifted")
     if model.get("tokenizer_fingerprint") != EXPECTED_TOKENIZER_FINGERPRINT:
         raise ValueError(f"{label}: tokenizer fingerprint drifted")
     runtime = payload.get("runtime", {})
@@ -153,8 +163,8 @@ def build_report(
     before_path: Path,
     after_path: Path,
 ) -> dict[str, Any]:
-    before_tasks = validate_payload(before, "before")
-    after_tasks = validate_payload(after, "after")
+    before_tasks = validate_payload(before, "before", require_base_config=True)
+    after_tasks = validate_payload(after, "after", require_base_config=False)
 
     if before["protocol"] != after["protocol"]:
         raise ValueError("before/after protocol objects differ")
@@ -163,8 +173,8 @@ def build_report(
         != after["model"]["tokenizer_fingerprint"]
     ):
         raise ValueError("before/after tokenizer fingerprints differ")
-    if before["model"]["config_sha256"] != after["model"]["config_sha256"]:
-        raise ValueError("before/after model configs differ")
+    if before["model"]["config_fingerprint"] != after["model"]["config_fingerprint"]:
+        raise ValueError("before/after semantic model configs differ")
     for field in RUNTIME_IDENTITY_FIELDS:
         if before["runtime"][field] != after["runtime"][field]:
             raise ValueError(f"before/after runtime field {field!r} differs")
@@ -219,7 +229,9 @@ def build_report(
         },
         "evaluation_identity": {
             "tokenizer_fingerprint": before["model"]["tokenizer_fingerprint"],
-            "model_config_sha256": before["model"]["config_sha256"],
+            "model_config_fingerprint": before["model"]["config_fingerprint"],
+            "base_model_config_sha256": before["model"]["config_sha256"],
+            "trained_model_config_sha256": after["model"]["config_sha256"],
             "runtime": {
                 field: before["runtime"][field] for field in RUNTIME_IDENTITY_FIELDS
             },

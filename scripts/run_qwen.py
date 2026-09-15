@@ -9,6 +9,7 @@ import json
 import math
 import platform
 import random
+import re
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -51,18 +52,58 @@ def optional_sha256(path: Path) -> str | None:
 
 
 def model_weight_manifest(model_path: Path) -> dict:
-    files = sorted(model_path.glob("*.safetensors"))
-    if not files:
-        raise ValueError(f"no safetensors weights found in {model_path}")
+    index_path = model_path / "model.safetensors.index.json"
+    if index_path.is_file():
+        index = json.loads(index_path.read_text(encoding="utf-8"))
+        names = sorted(set(index["weight_map"].values()))
+        files = [model_path / name for name in names]
+    else:
+        files = sorted(model_path.glob("*.safetensors"))
+    if not files or any(not path.is_file() for path in files):
+        raise ValueError(f"no complete safetensors weights found in {model_path}")
+
+    def shard_id(path: Path) -> str:
+        match = re.search(r"(\d+)-of-(\d+)\.safetensors$", path.name)
+        return f"{match.group(1)}-of-{match.group(2)}" if match else path.name
+
     return {
         "files": [
             {
                 "name": path.name,
+                "shard_id": shard_id(path),
                 "bytes": path.stat().st_size,
                 "sha256": sha256_file(path),
             }
             for path in files
         ]
+    }
+
+
+def model_config_fingerprint(config) -> dict:
+    volatile_keys = {"_name_or_path", "name_or_path", "transformers_version"}
+
+    def normalize(value):
+        if isinstance(value, dict):
+            return {
+                key: normalize(item)
+                for key, item in sorted(value.items())
+                if key not in volatile_keys
+            }
+        if isinstance(value, list):
+            return [normalize(item) for item in value]
+        return value
+
+    payload = json.dumps(
+        normalize(config.to_dict()),
+        ensure_ascii=False,
+        sort_keys=True,
+        separators=(",", ":"),
+    ).encode("utf-8")
+    return {
+        "class": type(config).__name__,
+        "model_type": config.model_type,
+        "architectures": list(config.architectures or ()),
+        "sha256": hashlib.sha256(payload).hexdigest(),
     }
 
 
@@ -98,7 +139,12 @@ def main() -> None:
 
     import torch
     import transformers
-    from transformers import AutoModelForCausalLM, AutoTokenizer
+    from transformers import (
+        AutoConfig,
+        AutoModelForCausalLM,
+        AutoModelForImageTextToText,
+        AutoTokenizer,
+    )
 
     random.seed(0)
     torch.manual_seed(0)
@@ -112,7 +158,14 @@ def main() -> None:
     if tokenizer.pad_token_id is None:
         tokenizer.pad_token_id = tokenizer.eos_token_id
 
-    model = AutoModelForCausalLM.from_pretrained(
+    config = AutoConfig.from_pretrained(model_path)
+    architectures = set(config.architectures or ())
+    model_loader = (
+        AutoModelForImageTextToText
+        if any(name.endswith("ForConditionalGeneration") for name in architectures)
+        else AutoModelForCausalLM
+    )
+    model = model_loader.from_pretrained(
         model_path,
         dtype=torch.bfloat16,
         device_map={"": 0},
@@ -187,6 +240,7 @@ def main() -> None:
         "model": {
             "path": str(model_path),
             "config_sha256": sha256_file(model_path / "config.json"),
+            "config_fingerprint": model_config_fingerprint(config),
             "tokenizer_config_sha256": optional_sha256(
                 model_path / "tokenizer_config.json"
             ),
@@ -206,6 +260,7 @@ def main() -> None:
             "torch": torch.__version__,
             "transformers": transformers.__version__,
             "device": torch.cuda.get_device_name(0),
+            "model_class": type(model).__name__,
         },
         **evaluation,
     }

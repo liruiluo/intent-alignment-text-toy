@@ -40,7 +40,10 @@ def payload(weight_digest: str) -> dict:
             "evaluation_batch_size": MODULE.EXPECTED_BATCH_SIZE,
         },
         "model": {
-            "config_sha256": MODULE.EXPECTED_MODEL_CONFIG_SHA256,
+            "config_sha256": MODULE.EXPECTED_BASE_MODEL_CONFIG_SHA256,
+            "config_fingerprint": copy.deepcopy(
+                MODULE.EXPECTED_MODEL_CONFIG_FINGERPRINT
+            ),
             "tokenizer_fingerprint": copy.deepcopy(
                 MODULE.EXPECTED_TOKENIZER_FINGERPRINT
             ),
@@ -95,6 +98,31 @@ def test_comparison_rejects_empty_or_unchanged_weight_evidence(tmp_path):
         build(before, payload("a" * 64), tmp_path)
 
 
+def test_comparison_accepts_saved_config_reformat_and_shard_prefix_change(tmp_path):
+    before = payload("a" * 64)
+    after = payload("b" * 64)
+    before["model"]["weights"]["files"][0].update(
+        name="model.safetensors-00001-of-00001.safetensors", shard_id="00001-of-00001"
+    )
+    after["model"]["config_sha256"] = "1" * 64
+    after["model"]["weights"]["files"][0].update(
+        name="model-00001-of-00001.safetensors", shard_id="00001-of-00001"
+    )
+
+    report = build(before, after, tmp_path)
+    assert report["parameter_evidence"]["changed_weight_files"] == [
+        "00001-of-00001"
+    ]
+
+
+def test_comparison_rejects_semantic_config_drift(tmp_path):
+    before = payload("a" * 64)
+    after = payload("b" * 64)
+    after["model"]["config_fingerprint"]["sha256"] = "0" * 64
+    with pytest.raises(ValueError, match="semantic model config fingerprint drifted"):
+        build(before, after, tmp_path)
+
+
 def test_comparison_rejects_tokenizer_or_runtime_drift(tmp_path):
     before = payload("a" * 64)
     after = payload("b" * 64)
@@ -108,9 +136,15 @@ def test_comparison_rejects_tokenizer_or_runtime_drift(tmp_path):
         build(before, after, tmp_path)
 
 
-def test_comparator_pins_frozen_dataset_hash():
+def test_comparator_pins_frozen_dataset_and_full_model_hashes():
     assert MODULE.EXPECTED_DATASET_SHA256 == (
         "b2f7560c4466949136bec09bd2e8532a27def45696c5eeed3b4fcc99de2c1675"
+    )
+    assert MODULE.EXPECTED_BASE_MODEL_CONFIG_SHA256 == (
+        "ddc63e1c717afa86c865bb5e01313d89d72bb53b97ad4a8a03ba8510c0621670"
+    )
+    assert MODULE.EXPECTED_MODEL_CONFIG_FINGERPRINT["sha256"] == (
+        "59a96f1b0661530c8c919d4529ece05245e106b30c2ac46e4a0f0c4be9f6cc78"
     )
     assert MODULE.sha256_file(MODULE.FROZEN_TEST) == MODULE.EXPECTED_DATASET_SHA256
 

@@ -19,11 +19,18 @@ def test_ray_tmpdir_is_short_and_independent_of_long_run_path():
     assert len(longest_expected.encode()) <= 107
 
 
-def test_training_launcher_requires_pinned_transfer_queue():
+def test_training_launcher_requires_pinned_sglang_runtime():
     script = LAUNCHER.read_text(encoding="utf-8")
 
     assert '"transfer_queue": "0.1.8"' in script
     assert 'importlib.metadata.version("TransferQueue")' in script
-    assert '"vllm": "0.24.0"' in script
-    assert "actor_rollout_ref.rollout.name=vllm" in script
-    assert "actor_rollout_ref.rollout.name=sglang" not in script
+    assert '"sglang": "0.5.12"' in script
+    assert "actor_rollout_ref.rollout.name=sglang" in script
+    assert "actor_rollout_ref.rollout.name=vllm" not in script
+    assert "+actor_rollout_ref.rollout.engine_kwargs.sglang.attention_backend=triton" in script
+    assert "+actor_rollout_ref.rollout.engine_kwargs.sglang.sampling_backend=pytorch" in script
+    assert "actor_rollout_ref.rollout.load_format=safetensors" in script
+    assert "TVM_FFI_CACHE_DIR" in script
+    assert "CUDA_HOME" in script
+    assert "site-packages/nvidia/cu13/lib" in script
+    assert 'export LD_LIBRARY_PATH="$CUDA_HOME/lib64:$runtime_cuda_lib' in script

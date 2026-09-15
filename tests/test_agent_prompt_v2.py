@@ -1,9 +1,13 @@
+from pathlib import Path
+
 from intent_alignment_toy.environment import Task, TextNavigationEnv
 from intent_alignment_toy.evaluation import (
     build_agent_feedback,
     build_agent_messages,
     build_initial_agent_prompt,
 )
+
+ROOT = Path(__file__).resolve().parents[1]
 
 
 def test_v2_conversation_replays_agent_loop_without_hiding_future_state():
@@ -47,3 +51,12 @@ def test_v2_conversation_preserves_exact_valid_assistant_text():
 
     assert messages[2] == {"role": "assistant", "content": "  RIGHT\n"}
     assert "当前位置：(1, 0)" in messages[3]["content"]
+
+
+def test_qwen_evaluator_supports_conditional_generation_checkpoint():
+    script = (ROOT / "scripts" / "run_qwen.py").read_text(encoding="utf-8")
+    assert "AutoModelForImageTextToText" in script
+    assert 'name.endswith("ForConditionalGeneration")' in script
+    assert '"model_class": type(model).__name__' in script
+    assert 'r"(\\d+)-of-(\\d+)\\.safetensors$"' in script
+    assert '"config_fingerprint": model_config_fingerprint(config)' in script

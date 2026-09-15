@@ -19,10 +19,10 @@ readonly ACTOR_LR=1e-6
 readonly EXPECTED_VERL_COMMIT=483b8a009ba3a97563edee3a19887e4862b8094a
 readonly EXPECTED_TRAIN_PARQUET_SHA256=0ac6025c3976485be9d0ee2df27fd326515deb05d09ed127ae9c33482894594f
 readonly EXPECTED_TEST_PARQUET_SHA256=8c70d231dd8b3bc13d1529e30b37c8961c9a8662efc60040a5a93d08a74ae741
-readonly EXPECTED_MODEL_CONFIG_SHA256=496d39ff3964cea8009c004e5d89fbd7801526992f699ff3f2934b12cb7e8892
-readonly EXPECTED_MODEL_INDEX_SHA256=7ea014c2759b3fc80f435c023ffc8b44ce91e31d109f1d48123f0e14c365b2d7
-readonly EXPECTED_MODEL_WEIGHT_1_SHA256=9cb7db23bcd0858bd4f26ac49c6ee88999cb5721e73e7ac0b09acc18774c89ef
-readonly EXPECTED_MODEL_WEIGHT_2_SHA256=8359a9f4e0f3a2d9fa5e2dfcf5e0de82b966e67767e74edddd29580b55089fa4
+readonly EXPECTED_MODEL_CONFIG_SHA256=ddc63e1c717afa86c865bb5e01313d89d72bb53b97ad4a8a03ba8510c0621670
+readonly EXPECTED_MODEL_INDEX_SHA256=cf3f798ee02ba45f9622aa8892a47369ab667d0afbf154ee7c2212de42e6302d
+readonly EXPECTED_MODEL_WEIGHT_1_SHA256=26a93f066e1916adb13453dae5a0c707c0fbc71299ed98779571a907b8e74c61
+readonly EXPECTED_MODEL_WEIGHT_2_SHA256=cb544bd9bfae93dc59b0f22b292f5933573854a7f9b97835c67060d7d910e188
 
 mkdir -p "$RUN_DIR" "$RUN_DIR/rollouts"
 [[ -f "$VERL_ROOT/verl/trainer/main_ppo.py" ]]
@@ -60,12 +60,40 @@ check_sha256 "$TRAIN_PARQUET" "$EXPECTED_TRAIN_PARQUET_SHA256" "train parquet"
 check_sha256 "$TEST_PARQUET" "$EXPECTED_TEST_PARQUET_SHA256" "test parquet"
 check_sha256 "$MODEL_PATH/config.json" "$EXPECTED_MODEL_CONFIG_SHA256" "model config"
 check_sha256 "$MODEL_PATH/model.safetensors.index.json" "$EXPECTED_MODEL_INDEX_SHA256" "model index"
-[[ $(find "$MODEL_PATH" -maxdepth 1 -type f -name '*.safetensors' | wc -l) -eq 2 ]] || {
-  echo "frozen model must contain exactly two safetensors shards" >&2
+"$PYTHON_BIN" - "$MODEL_PATH/model.safetensors.index.json" <<'PY_MODEL_INDEX'
+import json
+import sys
+
+expected = {
+    "model.safetensors-00001-of-00002.safetensors",
+    "model.safetensors-00002-of-00002.safetensors",
+}
+with open(sys.argv[1], encoding="utf-8") as handle:
+    actual = set(json.load(handle)["weight_map"].values())
+if actual != expected:
+    raise SystemExit(f"model index shard set drifted: expected={sorted(expected)!r}, actual={sorted(actual)!r}")
+PY_MODEL_INDEX
+check_sha256 "$MODEL_PATH/model.safetensors-00001-of-00002.safetensors" "$EXPECTED_MODEL_WEIGHT_1_SHA256" "model shard 1"
+check_sha256 "$MODEL_PATH/model.safetensors-00002-of-00002.safetensors" "$EXPECTED_MODEL_WEIGHT_2_SHA256" "model shard 2"
+
+: "${CUDA_HOME:?set CUDA_HOME to a CUDA 13 toolkit that supports sm_103}"
+[[ -x "$CUDA_HOME/bin/nvcc" ]] || {
+  echo "CUDA_HOME does not provide nvcc: $CUDA_HOME" >&2
   exit 65
 }
-check_sha256 "$MODEL_PATH/model-00001-of-00002.safetensors" "$EXPECTED_MODEL_WEIGHT_1_SHA256" "model shard 1"
-check_sha256 "$MODEL_PATH/model-00002-of-00002.safetensors" "$EXPECTED_MODEL_WEIGHT_2_SHA256" "model shard 2"
+export PATH="$(dirname "$PYTHON_BIN"):$CUDA_HOME/bin:$PATH"
+python_prefix=$("$PYTHON_BIN" -c 'import sys; print(sys.prefix)')
+python_minor=$("$PYTHON_BIN" -c 'import sys; print(f"python{sys.version_info.major}.{sys.version_info.minor}")')
+runtime_cuda_lib="$python_prefix/lib/$python_minor/site-packages/nvidia/cu13/lib"
+[[ -d "$runtime_cuda_lib" ]] || {
+  echo "Python runtime does not provide CUDA 13 libraries: $runtime_cuda_lib" >&2
+  exit 65
+}
+export LD_LIBRARY_PATH="$CUDA_HOME/lib64:$runtime_cuda_lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
+"$CUDA_HOME/bin/nvcc" --version | grep -q 'release 13\.' || {
+  echo "Qwen3.5 SGLang JIT requires CUDA 13.x on B300" >&2
+  exit 65
+}
 
 "$PYTHON_BIN" - <<'PY_RUNTIME_GATE'
 import importlib.metadata
@@ -79,7 +107,7 @@ expected = {
     "torch": "2.11.0+cu130",
     "transformers": "5.5.3",
     "transfer_queue": "0.1.8",
-    "vllm": "0.24.0",
+    "sglang": "0.5.12",
     "device": "NVIDIA B300 SXM6 AC",
 }
 actual = {
@@ -87,7 +115,7 @@ actual = {
     "torch": torch.__version__,
     "transformers": transformers.__version__,
     "transfer_queue": importlib.metadata.version("TransferQueue"),
-    "vllm": importlib.metadata.version("vllm"),
+    "sglang": importlib.metadata.version("sglang"),
     "device": torch.cuda.get_device_name(0) if torch.cuda.device_count() == 1 else None,
 }
 if actual != expected:
@@ -111,7 +139,9 @@ export WANDB_MODE=disabled
 # RUN_DIR is a long shared-storage experiment path.
 run_dir_sha256=$(printf '%s' "$RUN_DIR" | sha256sum | awk '{print $1}')
 export RAY_TMPDIR="/tmp/iatoy-ray-${run_dir_sha256:0:12}"
-mkdir -p "$RAY_TMPDIR"
+export TVM_FFI_CACHE_DIR="${TVM_FFI_CACHE_DIR:-$RAY_TMPDIR/tvm-ffi}"
+export TORCH_EXTENSIONS_DIR="${TORCH_EXTENSIONS_DIR:-$RAY_TMPDIR/torch-extensions}"
+mkdir -p "$RAY_TMPDIR" "$TVM_FFI_CACHE_DIR" "$TORCH_EXTENSIONS_DIR"
 
 "$PYTHON_BIN" -m verl.trainer.main_ppo \
   algorithm.adv_estimator=grpo \
@@ -138,7 +168,7 @@ mkdir -p "$RAY_TMPDIR"
   actor_rollout_ref.actor.fsdp_config.param_offload=false \
   actor_rollout_ref.actor.fsdp_config.optimizer_offload=false \
   actor_rollout_ref.actor.checkpoint.save_contents='[model,optimizer,extra,hf_model]' \
-  actor_rollout_ref.rollout.name=vllm \
+  actor_rollout_ref.rollout.name=sglang \
   actor_rollout_ref.rollout.mode=async \
   actor_rollout_ref.rollout.tensor_model_parallel_size=1 \
   actor_rollout_ref.rollout.data_parallel_size=1 \
@@ -147,6 +177,9 @@ mkdir -p "$RAY_TMPDIR"
   actor_rollout_ref.rollout.top_p=0.95 \
   actor_rollout_ref.rollout.top_k=-1 \
   actor_rollout_ref.rollout.gpu_memory_utilization=0.45 \
+  actor_rollout_ref.rollout.load_format=safetensors \
+  +actor_rollout_ref.rollout.engine_kwargs.sglang.attention_backend=triton \
+  +actor_rollout_ref.rollout.engine_kwargs.sglang.sampling_backend=pytorch \
   actor_rollout_ref.rollout.max_num_seqs=128 \
   actor_rollout_ref.rollout.max_num_batched_tokens=8192 \
   actor_rollout_ref.rollout.log_prob_micro_batch_size_per_gpu="$LOGPROB_MICRO_BATCH_SIZE" \

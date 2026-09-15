@@ -44,7 +44,7 @@ Qwen3.5-4B 单卡评测：
 
 ```bash
 PYTHONPATH=src python3 scripts/run_qwen.py \
-  --model /path/to/Qwen3.5-4B-text-only \
+  --model /path/to/Qwen3.5-4B \
   --dataset data/intent_alignment_test_100.jsonl \
   --prompt-contract v2-agent-loop \
   --batch-size 100 \
@@ -56,11 +56,12 @@ PYTHONPATH=src python3 scripts/run_qwen.py \
 
 ```bash
 VERL_ROOT=/path/to/verl-v0.9.0 \
-MODEL_PATH=/path/to/Qwen3.5-4B-text-only \
+MODEL_PATH=/path/to/Qwen3.5-4B \
 TRAIN_PARQUET=/path/to/train.parquet \
 TEST_PARQUET=/path/to/test.parquet \
 RUN_DIR=/path/to/run \
 PYTHON_BIN=/path/to/python \
+CUDA_HOME=/path/to/cuda-13 \
   bash scripts/run_verl_one_step.sh
 ```
 
