@@ -1,0 +1,1122 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light">
+  <meta name="description" content="Qwen3.5-4B 在二维文字移动环境中的意图对齐单卡实验演示。">
+  <title>课题2 · Qwen3.5-4B 意图对齐演示</title>
+  <style>
+    :root {
+      --bg: #f4f7fb;
+      --surface: rgba(255,255,255,.94);
+      --surface-strong: #ffffff;
+      --surface-soft: #eef3f9;
+      --text: #172033;
+      --text-soft: #5d687d;
+      --text-faint: #8993a5;
+      --line: #dfe6ef;
+      --line-strong: #cbd5e1;
+      --accent: #3157d5;
+      --accent-soft: #e9efff;
+      --accent-dark: #203eaa;
+      --success: #16815d;
+      --success-soft: #e8f7f1;
+      --danger: #c4414f;
+      --danger-soft: #fff0f1;
+      --warning: #a76b05;
+      --warning-soft: #fff7df;
+      --shadow: 0 18px 48px rgba(31, 49, 82, .10), 0 2px 8px rgba(31, 49, 82, .05);
+      --shadow-soft: 0 8px 24px rgba(31, 49, 82, .07);
+      --radius-xl: 24px;
+      --radius-lg: 18px;
+      --radius-md: 13px;
+      --font: "Segoe UI", "Microsoft YaHei UI", "Microsoft YaHei", "PingFang SC", system-ui, sans-serif;
+      --mono: "Cascadia Code", "SFMono-Regular", Consolas, monospace;
+    }
+
+    * { box-sizing: border-box; }
+    html { scroll-behavior: smooth; }
+    body {
+      margin: 0;
+      min-width: 320px;
+      min-height: 100vh;
+      color: var(--text);
+      font-family: var(--font);
+      background:
+        radial-gradient(circle at 11% 0%, rgba(49,87,213,.10), transparent 28rem),
+        radial-gradient(circle at 96% 10%, rgba(25,143,108,.08), transparent 24rem),
+        var(--bg);
+      -webkit-font-smoothing: antialiased;
+    }
+    button, select { font: inherit; }
+    button { border: 0; }
+    button, select, [role="button"] { -webkit-tap-highlight-color: transparent; }
+    :focus-visible { outline: 3px solid rgba(49,87,213,.28); outline-offset: 3px; }
+
+    .app {
+      width: min(1480px, calc(100% - 40px));
+      margin: 20px auto 32px;
+    }
+
+    .topbar {
+      position: sticky;
+      top: 12px;
+      z-index: 50;
+      min-height: 68px;
+      display: flex;
+      align-items: center;
+      gap: 22px;
+      padding: 10px 12px 10px 16px;
+      border: 1px solid rgba(203,213,225,.82);
+      border-radius: 20px;
+      background: rgba(255,255,255,.86);
+      box-shadow: 0 12px 34px rgba(35,52,83,.09);
+      backdrop-filter: blur(18px);
+    }
+
+    .brand { display: flex; align-items: center; gap: 12px; min-width: 300px; }
+    .brand-mark {
+      width: 42px; height: 42px; border-radius: 13px;
+      display: grid; place-items: center;
+      color: #fff;
+      background: linear-gradient(145deg, #4167e9, #2445bd);
+      box-shadow: 0 8px 20px rgba(49,87,213,.25);
+    }
+    .brand-mark svg { width: 24px; height: 24px; }
+    .brand-kicker { color: var(--text-faint); font-size: 11px; font-weight: 700; letter-spacing: .13em; text-transform: uppercase; }
+    .brand-title { margin-top: 2px; font-size: 15px; line-height: 1.2; font-weight: 730; white-space: nowrap; }
+
+    .nav-tabs {
+      display: flex;
+      gap: 4px;
+      margin: 0 auto;
+      padding: 4px;
+      border-radius: 13px;
+      background: #edf1f6;
+    }
+    .nav-button {
+      min-width: 92px;
+      padding: 9px 14px;
+      color: var(--text-soft);
+      background: transparent;
+      border-radius: 10px;
+      cursor: pointer;
+      transition: color .16s ease, background .16s ease, box-shadow .16s ease;
+    }
+    .nav-button:hover { color: var(--text); }
+    .nav-button.active {
+      color: var(--text);
+      font-weight: 700;
+      background: #fff;
+      box-shadow: 0 2px 8px rgba(38,51,75,.10);
+    }
+
+    .top-actions { display: flex; align-items: center; gap: 7px; }
+    .icon-button {
+      width: 40px; height: 40px;
+      display: grid; place-items: center;
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      color: var(--text-soft);
+      background: rgba(255,255,255,.76);
+      cursor: pointer;
+      transition: transform .16s ease, background .16s ease, color .16s ease, box-shadow .16s ease;
+    }
+    .icon-button:hover { transform: translateY(-1px); color: var(--accent); background: #fff; box-shadow: var(--shadow-soft); }
+    .icon-button svg { width: 19px; height: 19px; }
+
+    .view { display: none; animation: view-in .24s ease-out both; }
+    .view.active { display: block; }
+    @keyframes view-in { from { opacity: 0; transform: translateY(5px); } to { opacity: 1; transform: none; } }
+
+    .hero {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto;
+      gap: 30px;
+      align-items: end;
+      padding: 48px 8px 26px;
+    }
+    .eyebrow { display: flex; align-items: center; gap: 8px; color: var(--accent); font-size: 13px; font-weight: 750; letter-spacing: .05em; }
+    .eyebrow::before { content: ""; width: 8px; height: 8px; border-radius: 50%; background: var(--success); box-shadow: 0 0 0 5px rgba(22,129,93,.10); }
+    .hero h1 { max-width: 830px; margin: 12px 0 10px; font-size: clamp(30px, 3.4vw, 52px); line-height: 1.08; letter-spacing: -.035em; }
+    .hero-copy { max-width: 760px; margin: 0; color: var(--text-soft); font-size: 17px; line-height: 1.75; }
+    .hero-metrics { display: flex; gap: 10px; }
+    .hero-metric {
+      min-width: 118px;
+      padding: 15px 17px;
+      border: 1px solid var(--line);
+      border-radius: 16px;
+      background: rgba(255,255,255,.82);
+      box-shadow: var(--shadow-soft);
+    }
+    .hero-metric strong { display: block; font-size: 25px; line-height: 1; letter-spacing: -.03em; }
+    .hero-metric span { display: block; margin-top: 7px; color: var(--text-faint); font-size: 12px; }
+    .hero-metric.highlight { color: var(--success); border-color: rgba(22,129,93,.22); background: var(--success-soft); }
+
+    .card {
+      border: 1px solid rgba(207,217,230,.90);
+      border-radius: var(--radius-xl);
+      background: var(--surface);
+      box-shadow: var(--shadow);
+    }
+
+    .demo-layout {
+      display: grid;
+      grid-template-columns: minmax(560px, 1.45fr) minmax(390px, .82fr);
+      gap: 18px;
+      align-items: stretch;
+    }
+
+    .stage-card { overflow: hidden; }
+    .task-bar {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto;
+      align-items: center;
+      gap: 16px;
+      padding: 19px 22px;
+      border-bottom: 1px solid var(--line);
+      background: rgba(249,251,254,.86);
+    }
+    .field-label { display: block; margin-bottom: 7px; color: var(--text-faint); font-size: 11px; font-weight: 750; letter-spacing: .08em; text-transform: uppercase; }
+    .task-select {
+      width: 100%; min-height: 42px;
+      padding: 0 38px 0 13px;
+      color: var(--text);
+      border: 1px solid var(--line-strong);
+      border-radius: 11px;
+      background: #fff;
+      cursor: pointer;
+    }
+    .quick-actions { display: flex; gap: 7px; align-self: end; }
+    .quiet-button {
+      min-height: 42px;
+      padding: 0 13px;
+      color: var(--text-soft);
+      border: 1px solid var(--line);
+      border-radius: 11px;
+      background: #fff;
+      cursor: pointer;
+      transition: border-color .16s ease, color .16s ease, transform .16s ease;
+    }
+    .quiet-button:hover { color: var(--accent); border-color: rgba(49,87,213,.38); transform: translateY(-1px); }
+
+    .intent-banner {
+      display: flex;
+      align-items: center;
+      gap: 15px;
+      margin: 20px 22px 2px;
+      padding: 15px 17px;
+      border: 1px solid rgba(49,87,213,.17);
+      border-radius: 15px;
+      background: var(--accent-soft);
+    }
+    .quote-mark { color: var(--accent); font-family: Georgia, serif; font-size: 38px; line-height: .8; opacity: .7; }
+    .intent-main { flex: 1; min-width: 0; }
+    .intent-main small { display: block; margin-bottom: 4px; color: var(--accent-dark); font-size: 11px; font-weight: 750; letter-spacing: .08em; }
+    .intent-text { font-size: 18px; font-weight: 680; line-height: 1.45; }
+    .task-tags { display: flex; gap: 7px; flex-wrap: wrap; justify-content: flex-end; }
+    .tag { padding: 6px 9px; color: var(--text-soft); font-size: 11px; font-weight: 650; border-radius: 999px; background: rgba(255,255,255,.75); border: 1px solid rgba(49,87,213,.12); }
+
+    .board-wrap { padding: 14px 22px 18px; }
+    .board-shell {
+      position: relative;
+      width: min(100%, 680px);
+      margin: 0 auto;
+      aspect-ratio: 1.52 / 1;
+      overflow: hidden;
+      border: 1px solid var(--line);
+      border-radius: 20px;
+      background: linear-gradient(180deg, #fbfdff, #f2f6fb);
+    }
+    .board-shell svg { display: block; width: 100%; height: 100%; }
+    .grid-line { stroke: #dfe7f0; stroke-width: 1; vector-effect: non-scaling-stroke; }
+    .axis-line { stroke: #aab8ca; stroke-width: 1.6; vector-effect: non-scaling-stroke; }
+    .axis-label { fill: #98a4b5; font-family: var(--mono); font-size: 12px; }
+    .path-line { fill: none; stroke: rgba(49,87,213,.46); stroke-width: 8; stroke-linecap: round; stroke-linejoin: round; }
+    .path-dot { fill: #fff; stroke: var(--accent); stroke-width: 3; }
+    .origin-dot { fill: #fff; stroke: #7c899b; stroke-width: 2.5; }
+    .target-ring { fill: rgba(22,129,93,.10); stroke: var(--success); stroke-width: 3; }
+    .target-cross { stroke: var(--success); stroke-width: 3; stroke-linecap: round; }
+    .agent-marker { transition: transform .48s cubic-bezier(.2,.8,.2,1); }
+    .agent-orb { fill: var(--accent); filter: drop-shadow(0 7px 8px rgba(49,87,213,.28)); }
+    .agent-eye { fill: #fff; }
+    .agent-arrow { fill: none; stroke: #fff; stroke-width: 2.5; stroke-linecap: round; stroke-linejoin: round; }
+    .coord-pill { fill: #172033; }
+    .coord-text { fill: #fff; font-family: var(--mono); font-size: 12px; font-weight: 700; }
+    .goal-label { fill: var(--success); font-family: var(--font); font-size: 12px; font-weight: 750; }
+    .board-state-badge {
+      position: absolute;
+      top: 14px; left: 14px;
+      display: flex; align-items: center; gap: 7px;
+      padding: 7px 10px;
+      color: var(--text-soft);
+      font-size: 12px; font-weight: 700;
+      border: 1px solid rgba(203,213,225,.85);
+      border-radius: 999px;
+      background: rgba(255,255,255,.88);
+      box-shadow: 0 4px 15px rgba(41,57,88,.08);
+      backdrop-filter: blur(10px);
+    }
+    .state-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--accent); }
+    .board-state-badge.success .state-dot { background: var(--success); }
+    .board-state-badge.failure .state-dot { background: var(--danger); }
+    .board-state-badge.success { color: var(--success); border-color: rgba(22,129,93,.22); }
+    .board-state-badge.failure { color: var(--danger); border-color: rgba(196,65,79,.22); }
+    .board-legend { display: flex; align-items: center; justify-content: center; gap: 20px; margin-top: 12px; color: var(--text-faint); font-size: 12px; }
+    .legend-item { display: flex; align-items: center; gap: 7px; }
+    .legend-symbol { width: 10px; height: 10px; border-radius: 50%; }
+    .legend-agent { background: var(--accent); }
+    .legend-target { border: 2px solid var(--success); background: transparent; }
+    .legend-origin { border: 2px solid #7c899b; background: #fff; }
+
+    .inspector { display: flex; min-height: 650px; flex-direction: column; overflow: hidden; }
+    .inspector-head { display: flex; align-items: center; justify-content: space-between; gap: 14px; padding: 20px 21px 14px; }
+    .section-title { margin: 0; font-size: 18px; letter-spacing: -.015em; }
+    .section-subtitle { margin: 5px 0 0; color: var(--text-faint); font-size: 12px; }
+    .status-pill { padding: 7px 10px; border-radius: 999px; color: var(--accent); font-size: 12px; font-weight: 750; background: var(--accent-soft); }
+    .status-pill.success { color: var(--success); background: var(--success-soft); }
+    .status-pill.failure { color: var(--danger); background: var(--danger-soft); }
+
+    .stats-row { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; padding: 0 21px 14px; }
+    .mini-stat { padding: 11px 12px; border: 1px solid var(--line); border-radius: 12px; background: #fafcff; }
+    .mini-stat span { display: block; color: var(--text-faint); font-size: 10px; text-transform: uppercase; letter-spacing: .06em; }
+    .mini-stat strong { display: block; margin-top: 5px; font-family: var(--mono); font-size: 15px; }
+
+    .loop-flow { display: grid; grid-template-columns: repeat(4, 1fr); gap: 5px; padding: 13px 21px; border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); background: #f8fafc; }
+    .loop-node {
+      position: relative;
+      min-height: 56px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 8px 5px;
+      text-align: center;
+      color: var(--text-faint);
+      font-size: 11px;
+      font-weight: 650;
+      border: 1px solid transparent;
+      border-radius: 10px;
+      transition: .18s ease;
+    }
+    .loop-node:not(:last-child)::after { content: "›"; position: absolute; right: -6px; color: #a9b3c2; font-size: 17px; z-index: 2; }
+    .loop-node.active { color: var(--accent-dark); border-color: rgba(49,87,213,.18); background: var(--accent-soft); box-shadow: 0 4px 12px rgba(49,87,213,.09); }
+    .loop-node.done { color: var(--success); }
+
+    .cycle-card { margin: 14px 21px 0; padding: 15px; border: 1px solid var(--line); border-radius: 14px; background: #fff; }
+    .cycle-row { display: grid; grid-template-columns: 84px minmax(0,1fr); gap: 10px; align-items: start; }
+    .cycle-row + .cycle-row { margin-top: 11px; padding-top: 11px; border-top: 1px dashed var(--line); }
+    .cycle-key { color: var(--text-faint); font-size: 11px; font-weight: 700; }
+    .cycle-value { min-width: 0; color: var(--text); font-size: 12px; line-height: 1.55; word-break: break-word; }
+    .action-output { display: inline-flex; align-items: center; min-height: 27px; padding: 4px 9px; color: #fff; font-family: var(--mono); font-size: 12px; font-weight: 800; border-radius: 8px; background: var(--accent); }
+    .action-output.muted { color: var(--text-faint); background: var(--surface-soft); }
+
+    .timeline-title { display: flex; justify-content: space-between; align-items: center; padding: 15px 21px 8px; color: var(--text-soft); font-size: 12px; font-weight: 750; }
+    .timeline { flex: 1; min-height: 112px; max-height: 176px; overflow: auto; padding: 0 21px 12px; scrollbar-width: thin; }
+    .timeline-empty { padding: 18px 12px; color: var(--text-faint); font-size: 12px; text-align: center; border: 1px dashed var(--line); border-radius: 12px; }
+    .timeline-item { display: grid; grid-template-columns: 28px 1fr auto; gap: 10px; align-items: center; padding: 8px 2px; border-bottom: 1px solid #edf1f5; }
+    .timeline-index { width: 25px; height: 25px; display: grid; place-items: center; color: var(--text-faint); font-size: 10px; font-weight: 700; border-radius: 8px; background: var(--surface-soft); }
+    .timeline-action { font-family: var(--mono); font-size: 12px; font-weight: 800; }
+    .timeline-move { color: var(--text-faint); font-family: var(--mono); font-size: 11px; }
+
+    .controls { display: grid; grid-template-columns: 1fr auto auto; gap: 8px; padding: 13px 21px; border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); background: #fbfcfe; }
+    .primary-button, .secondary-button {
+      min-height: 44px; display: inline-flex; align-items: center; justify-content: center; gap: 8px; padding: 0 15px; border-radius: 12px; cursor: pointer; transition: transform .16s ease, box-shadow .16s ease, background .16s ease;
+    }
+    .primary-button { color: #fff; font-weight: 720; background: var(--accent); box-shadow: 0 8px 18px rgba(49,87,213,.22); }
+    .primary-button:hover { transform: translateY(-1px); background: var(--accent-dark); box-shadow: 0 10px 22px rgba(49,87,213,.28); }
+    .secondary-button { color: var(--text-soft); border: 1px solid var(--line); background: #fff; }
+    .secondary-button:hover { transform: translateY(-1px); box-shadow: var(--shadow-soft); }
+    .primary-button svg, .secondary-button svg { width: 17px; height: 17px; }
+    .truth-note { margin: 0 21px 17px; padding: 10px 12px; color: var(--text-faint); font-size: 11px; line-height: 1.5; border-radius: 10px; background: #f7f9fc; }
+    .truth-note strong { color: var(--text-soft); }
+
+    .section-hero { padding: 46px 8px 22px; }
+    .section-hero h1 { margin: 10px 0 8px; font-size: clamp(30px, 3vw, 44px); line-height: 1.12; letter-spacing: -.03em; }
+    .section-hero p { max-width: 800px; margin: 0; color: var(--text-soft); font-size: 16px; line-height: 1.7; }
+
+    .results-grid { display: grid; grid-template-columns: 380px minmax(0,1fr); gap: 18px; align-items: start; }
+    .summary-card { padding: 24px; }
+    .score-wrap { display: grid; place-items: center; padding: 8px 0 16px; }
+    .score-ring { position: relative; width: 220px; height: 220px; }
+    .score-ring svg { width: 100%; height: 100%; transform: rotate(-90deg); }
+    .score-track, .score-value { fill: none; stroke-width: 14; }
+    .score-track { stroke: #edf1f5; }
+    .score-value { stroke: var(--success); stroke-linecap: round; stroke-dasharray: 95 5; }
+    .score-center { position: absolute; inset: 0; display: grid; place-content: center; text-align: center; }
+    .score-center strong { color: var(--success); font-size: 45px; line-height: 1; letter-spacing: -.04em; }
+    .score-center span { margin-top: 7px; color: var(--text-faint); font-size: 12px; }
+    .result-callout { padding: 13px 14px; color: var(--success); font-size: 13px; font-weight: 700; line-height: 1.55; border: 1px solid rgba(22,129,93,.18); border-radius: 13px; background: var(--success-soft); }
+    .breakdown { margin-top: 19px; }
+    .breakdown-row { display: grid; grid-template-columns: 38px 1fr 44px; gap: 10px; align-items: center; margin-top: 12px; font-size: 12px; }
+    .breakdown-bar { height: 8px; overflow: hidden; border-radius: 999px; background: #edf1f5; }
+    .breakdown-bar i { display: block; height: 100%; border-radius: inherit; background: var(--accent); }
+    .breakdown-row.down i { background: var(--warning); }
+    .breakdown-value { color: var(--text-soft); font-family: var(--mono); text-align: right; }
+
+    .table-card { overflow: hidden; }
+    .table-head { display: flex; align-items: center; justify-content: space-between; gap: 14px; padding: 19px 21px; border-bottom: 1px solid var(--line); }
+    .filter-group { display: flex; gap: 5px; padding: 4px; border-radius: 10px; background: var(--surface-soft); }
+    .filter-button { padding: 7px 10px; color: var(--text-faint); font-size: 11px; border-radius: 8px; background: transparent; cursor: pointer; }
+    .filter-button.active { color: var(--text); font-weight: 700; background: #fff; box-shadow: 0 2px 7px rgba(38,51,75,.08); }
+    .table-scroll { max-height: 620px; overflow: auto; }
+    table { width: 100%; border-collapse: collapse; }
+    th { position: sticky; top: 0; z-index: 2; padding: 11px 15px; color: var(--text-faint); font-size: 10px; letter-spacing: .06em; text-align: left; text-transform: uppercase; background: #f8fafc; border-bottom: 1px solid var(--line); }
+    td { padding: 12px 15px; color: var(--text-soft); font-size: 12px; border-bottom: 1px solid #edf1f5; }
+    tbody tr { cursor: pointer; transition: background .14s ease; }
+    tbody tr:hover { background: #f7f9ff; }
+    tbody tr.failure-row { background: #fffafb; }
+    .task-id { color: var(--text-faint); font-family: var(--mono); font-size: 10px; }
+    .task-instruction { color: var(--text); font-weight: 610; }
+    .status-icon { display: inline-flex; align-items: center; gap: 6px; font-weight: 700; }
+    .status-icon.success { color: var(--success); }
+    .status-icon.failure { color: var(--danger); }
+    .status-icon::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: currentColor; }
+    .action-seq { font-family: var(--mono); font-size: 10px; white-space: nowrap; }
+
+    .failure-card { grid-column: 1 / -1; display: grid; grid-template-columns: minmax(0,1fr) minmax(360px,.8fr); gap: 24px; padding: 23px 25px; border-color: rgba(196,65,79,.20); background: linear-gradient(135deg, #fff, #fff7f8); }
+    .failure-label { color: var(--danger); font-size: 11px; font-weight: 780; letter-spacing: .08em; }
+    .failure-card h3 { margin: 8px 0 7px; font-size: 21px; }
+    .failure-card p { margin: 0; color: var(--text-soft); font-size: 13px; line-height: 1.65; }
+    .failure-trace { display: flex; align-items: center; justify-content: center; gap: 6px; flex-wrap: wrap; }
+    .trace-action { padding: 8px 10px; color: #fff; font-family: var(--mono); font-size: 12px; font-weight: 800; border-radius: 9px; background: var(--accent); }
+    .trace-action.wrong { color: var(--danger); border: 1px solid rgba(196,65,79,.25); background: var(--danger-soft); }
+    .trace-arrow { color: var(--text-faint); }
+
+    .method-grid { display: grid; grid-template-columns: repeat(12, 1fr); gap: 18px; }
+    .method-card { padding: 23px; }
+    .method-card h2, .method-card h3 { margin: 0; letter-spacing: -.02em; }
+    .method-card p { color: var(--text-soft); font-size: 13px; line-height: 1.7; }
+    .loop-card { grid-column: span 12; }
+    .method-flow { display: grid; grid-template-columns: repeat(4,1fr); gap: 12px; margin-top: 21px; }
+    .method-step { position: relative; min-height: 150px; padding: 17px; border: 1px solid var(--line); border-radius: 16px; background: #fafcff; }
+    .method-step:not(:last-child)::after { content: "→"; position: absolute; right: -19px; top: 61px; width: 26px; height: 26px; display: grid; place-items: center; color: var(--accent); font-weight: 800; border: 1px solid var(--line); border-radius: 50%; background: #fff; z-index: 2; }
+    .method-step-index { width: 28px; height: 28px; display: grid; place-items: center; color: var(--accent); font-family: var(--mono); font-size: 11px; font-weight: 800; border-radius: 9px; background: var(--accent-soft); }
+    .method-step h4 { margin: 13px 0 6px; font-size: 14px; }
+    .method-step p { margin: 0; font-size: 12px; }
+    .contract-card { grid-column: span 5; }
+    .reasoning-card { grid-column: span 7; background: linear-gradient(145deg, rgba(255,255,255,.97), rgba(237,242,255,.95)); }
+    .contract-list { display: grid; gap: 10px; margin-top: 18px; }
+    .contract-row { display: flex; align-items: center; justify-content: space-between; gap: 20px; padding-bottom: 10px; border-bottom: 1px solid var(--line); }
+    .contract-row:last-child { border: 0; padding-bottom: 0; }
+    .contract-row span { color: var(--text-faint); font-size: 12px; }
+    .contract-row strong { font-family: var(--mono); font-size: 12px; text-align: right; }
+    .reasoning-banner { display: inline-flex; align-items: center; gap: 8px; margin-top: 18px; padding: 8px 11px; color: var(--accent-dark); font-family: var(--mono); font-size: 12px; font-weight: 800; border-radius: 10px; background: var(--accent-soft); }
+    .code-block { margin-top: 15px; padding: 15px; overflow: auto; color: #dbe5ff; font-family: var(--mono); font-size: 11px; line-height: 1.75; border-radius: 14px; background: #182033; }
+    .boundary-card { grid-column: span 12; }
+    .boundaries { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 17px; }
+    .boundary { padding: 15px; border-radius: 14px; }
+    .boundary.yes { background: var(--success-soft); }
+    .boundary.no { background: var(--danger-soft); }
+    .boundary strong { display: block; margin-bottom: 7px; font-size: 13px; }
+    .boundary p { margin: 0; font-size: 12px; }
+
+    .footer {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 18px;
+      padding: 24px 8px 4px;
+      color: var(--text-faint);
+      font-size: 11px;
+    }
+    .footer code { font-family: var(--mono); color: var(--text-soft); }
+    .kbd-help { display: flex; gap: 10px; align-items: center; }
+    kbd { min-width: 21px; display: inline-grid; place-items: center; padding: 3px 6px; color: var(--text-soft); font: 10px var(--mono); border: 1px solid var(--line-strong); border-bottom-width: 2px; border-radius: 6px; background: #fff; }
+    #selfTestStatus { position: fixed; right: 8px; bottom: 8px; opacity: 0; pointer-events: none; }
+
+    @media (max-width: 1120px) {
+      .app { width: min(100% - 24px, 980px); }
+      .topbar { flex-wrap: wrap; }
+      .brand { min-width: 0; flex: 1; }
+      .nav-tabs { order: 3; width: 100%; }
+      .nav-button { flex: 1; }
+      .hero { grid-template-columns: 1fr; }
+      .hero-metrics { justify-content: flex-start; }
+      .demo-layout, .results-grid { grid-template-columns: 1fr; }
+      .inspector { min-height: auto; }
+      .failure-card { grid-template-columns: 1fr; }
+    }
+    @media (max-width: 720px) {
+      .app { width: min(100% - 14px, 680px); margin-top: 7px; }
+      .topbar { top: 5px; border-radius: 16px; }
+      .brand-kicker, .top-actions { display: none; }
+      .hero { padding-top: 32px; }
+      .hero-metrics { display: grid; grid-template-columns: repeat(3,1fr); }
+      .hero-metric { min-width: 0; padding: 12px; }
+      .hero-metric strong { font-size: 20px; }
+      .demo-layout { display: block; }
+      .stage-card { margin-bottom: 12px; }
+      .task-bar { grid-template-columns: 1fr; }
+      .quick-actions { justify-content: stretch; }
+      .quick-actions button { flex: 1; }
+      .intent-banner { align-items: flex-start; }
+      .task-tags { display: none; }
+      .board-shell { aspect-ratio: 1 / 1; }
+      .controls { grid-template-columns: 1fr 1fr; }
+      .controls .primary-button { grid-column: 1 / -1; }
+      .method-flow { grid-template-columns: 1fr; }
+      .method-step:not(:last-child)::after { content: "↓"; left: calc(50% - 13px); right: auto; top: auto; bottom: -19px; }
+      .contract-card, .reasoning-card { grid-column: span 12; }
+      .boundaries { grid-template-columns: 1fr; }
+      .footer { align-items: flex-start; flex-direction: column; }
+      .kbd-help { display: none; }
+    }
+    @media (prefers-reduced-motion: reduce) {
+      *, *::before, *::after { scroll-behavior: auto !important; animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition-duration: .01ms !important; }
+    }
+    @media print {
+      body { background: #fff; }
+      .app { width: 100%; margin: 0; }
+      .topbar, .controls, .quick-actions, .filter-group, .kbd-help, .icon-button { display: none !important; }
+      .view { display: block !important; page-break-after: always; animation: none; }
+      .hero, .section-hero { padding-top: 20px; }
+      .card { box-shadow: none; break-inside: avoid; }
+      .table-scroll { max-height: none; overflow: visible; }
+      th { position: static; }
+      .footer { page-break-before: avoid; }
+    }
+  </style>
+</head>
+<body>
+  <div class="app">
+    <header class="topbar">
+      <div class="brand">
+        <div class="brand-mark" aria-hidden="true">
+          <svg viewBox="0 0 24 24" fill="none"><path d="M7 4.5h10a2.5 2.5 0 0 1 2.5 2.5v10a2.5 2.5 0 0 1-2.5 2.5H7A2.5 2.5 0 0 1 4.5 17V7A2.5 2.5 0 0 1 7 4.5Z" stroke="currentColor" stroke-width="1.7"/><path d="M8 12h8M12 8v8" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/><circle cx="12" cy="12" r="2.4" fill="currentColor"/></svg>
+        </div>
+        <div>
+          <div class="brand-kicker">课题 2 · 结题测试</div>
+          <div class="brand-title">Qwen3.5-4B 文字意图对齐</div>
+        </div>
+      </div>
+
+      <nav class="nav-tabs" aria-label="演示页面">
+        <button class="nav-button active" data-view="demo">现场回放</button>
+        <button class="nav-button" data-view="results">20题结果</button>
+        <button class="nav-button" data-view="method">实验方法</button>
+      </nav>
+
+      <div class="top-actions">
+        <button class="icon-button" id="printButton" title="打印或导出 PDF" aria-label="打印或导出 PDF">
+          <svg viewBox="0 0 24 24" fill="none"><path d="M7 9V4h10v5M7 17H5a2 2 0 0 1-2-2v-4a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v4a2 2 0 0 1-2 2h-2M7 14h10v6H7v-6Z" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"/><circle cx="17.5" cy="12" r=".9" fill="currentColor"/></svg>
+        </button>
+        <button class="icon-button" id="fullscreenButton" title="全屏演示（F）" aria-label="全屏演示">
+          <svg viewBox="0 0 24 24" fill="none"><path d="M8 3H3v5M16 3h5v5M8 21H3v-5M16 21h5v-5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        </button>
+      </div>
+    </header>
+
+    <main>
+      <section class="view active" id="view-demo">
+        <div class="hero">
+          <div>
+            <div class="eyebrow">单卡实测 · Agent Loop</div>
+            <h1>一句中文意图，转化为连续的环境动作</h1>
+            <p class="hero-copy">模型每轮观察当前位置和剩余预算，只输出一个固定 1 米动作；环境执行后返回新状态，直到到达目标或预算耗尽。</p>
+          </div>
+          <div class="hero-metrics" aria-label="核心结果">
+            <div class="hero-metric"><strong>20</strong><span>冻结测试题</span></div>
+            <div class="hero-metric"><strong>19</strong><span>完成任务</span></div>
+            <div class="hero-metric highlight"><strong>95%</strong><span>达到预设门槛</span></div>
+          </div>
+        </div>
+
+        <div class="demo-layout">
+          <section class="card stage-card" aria-label="文字移动环境">
+            <div class="task-bar">
+              <label>
+                <span class="field-label">选择冻结测试题</span>
+                <select class="task-select" id="taskSelect" aria-label="选择测试题"></select>
+              </label>
+              <div class="quick-actions">
+                <button class="quiet-button" id="successExample">成功示例</button>
+                <button class="quiet-button" id="failureExample">唯一失败题</button>
+              </div>
+            </div>
+
+            <div class="intent-banner">
+              <div class="quote-mark" aria-hidden="true">“</div>
+              <div class="intent-main">
+                <small>用户意图</small>
+                <div class="intent-text" id="intentText"></div>
+              </div>
+              <div class="task-tags">
+                <span class="tag" id="targetTag"></span>
+                <span class="tag" id="budgetTag"></span>
+              </div>
+            </div>
+
+            <div class="board-wrap">
+              <div class="board-shell">
+                <div class="board-state-badge" id="boardStatus"><span class="state-dot"></span><span id="boardStatusText">等待执行</span></div>
+                <svg id="board" viewBox="0 0 660 440" role="img" aria-labelledby="boardTitle boardDesc">
+                  <title id="boardTitle">二维文字移动环境</title>
+                  <desc id="boardDesc">显示起点、目标点、智能体当前位置和已执行轨迹。</desc>
+                  <defs>
+                    <pattern id="smallGrid" width="36" height="36" patternUnits="userSpaceOnUse">
+                      <path d="M 36 0 L 0 0 0 36" class="grid-line" fill="none"/>
+                    </pattern>
+                  </defs>
+                  <rect x="132" y="22" width="396" height="396" rx="14" fill="url(#smallGrid)"/>
+                  <line id="xAxis" class="axis-line" x1="132" y1="220" x2="528" y2="220"/>
+                  <line id="yAxis" class="axis-line" x1="330" y1="22" x2="330" y2="418"/>
+                  <g id="axisLabels"></g>
+                  <polyline id="pathLine" class="path-line" points="330,220"/>
+                  <g id="pathDots"></g>
+                  <g id="originMarker">
+                    <circle class="origin-dot" cx="330" cy="220" r="7"/>
+                  </g>
+                  <g id="targetMarker">
+                    <circle class="target-ring" cx="330" cy="220" r="17"/>
+                    <path class="target-cross" d="M322 220h16M330 212v16"/>
+                    <text class="goal-label" x="350" y="205">目标</text>
+                  </g>
+                  <g id="agentMarker" class="agent-marker" transform="translate(330 220)">
+                    <circle class="agent-orb" cx="0" cy="0" r="20"/>
+                    <circle class="agent-eye" cx="-6" cy="-3" r="2.2"/>
+                    <circle class="agent-eye" cx="6" cy="-3" r="2.2"/>
+                    <path class="agent-arrow" d="M-7 6h14M3 2l4 4-4 4"/>
+                    <g transform="translate(-28 -43)">
+                      <rect class="coord-pill" width="56" height="23" rx="8"/>
+                      <text class="coord-text" id="agentCoord" x="28" y="15" text-anchor="middle">0, 0</text>
+                    </g>
+                  </g>
+                </svg>
+              </div>
+              <div class="board-legend">
+                <span class="legend-item"><i class="legend-symbol legend-agent"></i>Agent</span>
+                <span class="legend-item"><i class="legend-symbol legend-target"></i>目标</span>
+                <span class="legend-item"><i class="legend-symbol legend-origin"></i>起点</span>
+              </div>
+            </div>
+          </section>
+
+          <aside class="card inspector" aria-label="Agent Loop 状态">
+            <div class="inspector-head">
+              <div>
+                <h2 class="section-title">Agent Loop</h2>
+                <p class="section-subtitle">每轮重新观察，再决定一个动作</p>
+              </div>
+              <span class="status-pill" id="episodeStatus">未开始</span>
+            </div>
+
+            <div class="stats-row">
+              <div class="mini-stat"><span>当前位置</span><strong id="currentPosition">(0, 0)</strong></div>
+              <div class="mini-stat"><span>剩余预算</span><strong id="remainingSteps">—</strong></div>
+              <div class="mini-stat"><span>目标坐标</span><strong id="targetPosition">—</strong></div>
+            </div>
+
+            <div class="controls">
+              <button class="primary-button" id="playButton">
+                <svg viewBox="0 0 24 24" fill="none"><path d="m8 5 11 7-11 7V5Z" fill="currentColor"/></svg>
+                <span>播放实测轨迹</span>
+              </button>
+              <button class="secondary-button" id="stepButton">
+                <svg viewBox="0 0 24 24" fill="none"><path d="m6 5 9 7-9 7V5ZM17 5v14" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/></svg>
+                单步
+              </button>
+              <button class="secondary-button" id="resetButton">
+                <svg viewBox="0 0 24 24" fill="none"><path d="M4 7v5h5M5.4 16.5A8 8 0 1 0 5 8" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                重置
+              </button>
+            </div>
+            <p class="truth-note"><strong>展示口径：</strong>回放冻结评测中的真实 Qwen3.5-4B 输出；HTML 不在浏览器中运行模型。</p>
+
+            <div class="loop-flow" aria-label="循环阶段">
+              <div class="loop-node active" data-phase="observe">1. Observation</div>
+              <div class="loop-node" data-phase="policy">2. Qwen Policy</div>
+              <div class="loop-node" data-phase="action">3. Action</div>
+              <div class="loop-node" data-phase="environment">4. Env Step</div>
+            </div>
+
+            <div class="cycle-card">
+              <div class="cycle-row">
+                <div class="cycle-key">观察</div>
+                <div class="cycle-value" id="observationValue"></div>
+              </div>
+              <div class="cycle-row">
+                <div class="cycle-key">模型输出</div>
+                <div class="cycle-value"><span class="action-output muted" id="modelOutput">等待动作</span></div>
+              </div>
+              <div class="cycle-row">
+                <div class="cycle-key">环境反馈</div>
+                <div class="cycle-value" id="environmentFeedback">尚未执行动作</div>
+              </div>
+            </div>
+
+            <div class="timeline-title"><span>动作轨迹</span><span id="roundLabel">0 / 0 轮</span></div>
+            <div class="timeline" id="timeline"><div class="timeline-empty">点击“播放实测轨迹”开始</div></div>
+
+          </aside>
+        </div>
+      </section>
+
+      <section class="view" id="view-results">
+        <div class="section-hero">
+          <div class="eyebrow">冻结数据 · 逐题可追溯</div>
+          <h1>20 道题完成 19 道</h1>
+          <p>四个方向各 5 题，最短路径长度 1–5 各 4 题。主指标是在题目给定的最多 5 步预算内到达目标坐标。</p>
+        </div>
+
+        <div class="results-grid">
+          <section class="card summary-card">
+            <div class="score-wrap">
+              <div class="score-ring" aria-label="成功率95%">
+                <svg viewBox="0 0 120 120"><circle class="score-track" cx="60" cy="60" r="48" pathLength="100"/><circle class="score-value" cx="60" cy="60" r="48" pathLength="100"/></svg>
+                <div class="score-center"><strong>95%</strong><span>19 / 20</span></div>
+              </div>
+            </div>
+            <div class="result-callout">达到预设“95%以上”样本门槛：20 题中至少完成 19 题。</div>
+            <div class="breakdown" aria-label="按方向结果">
+              <div class="breakdown-row"><span>向右</span><div class="breakdown-bar"><i style="width:100%"></i></div><span class="breakdown-value">5 / 5</span></div>
+              <div class="breakdown-row"><span>向左</span><div class="breakdown-bar"><i style="width:100%"></i></div><span class="breakdown-value">5 / 5</span></div>
+              <div class="breakdown-row"><span>向上</span><div class="breakdown-bar"><i style="width:100%"></i></div><span class="breakdown-value">5 / 5</span></div>
+              <div class="breakdown-row down"><span>向下</span><div class="breakdown-bar"><i style="width:80%"></i></div><span class="breakdown-value">4 / 5</span></div>
+            </div>
+          </section>
+
+          <section class="card table-card">
+            <div class="table-head">
+              <div><h2 class="section-title">逐题结果</h2><p class="section-subtitle">点击任意一题可返回现场回放</p></div>
+              <div class="filter-group" aria-label="筛选结果">
+                <button class="filter-button active" data-filter="all">全部 20</button>
+                <button class="filter-button" data-filter="success">成功 19</button>
+                <button class="filter-button" data-filter="failure">失败 1</button>
+              </div>
+            </div>
+            <div class="table-scroll">
+              <table>
+                <thead><tr><th>编号</th><th>用户意图</th><th>目标 / 预算</th><th>模型动作</th><th>结果</th></tr></thead>
+                <tbody id="resultsBody"></tbody>
+              </table>
+            </div>
+          </section>
+
+          <section class="card failure-card">
+            <div>
+              <div class="failure-label">唯一失败样本 · down-4</div>
+              <h3>一步方向反转后，最短预算无法补救</h3>
+              <p>第二轮模型已经看到当前位置 <code>(0,-1)</code>、剩余 3 步和历史动作 <code>DOWN</code>，但输出了合法却错误的 <code>UP</code>。该题预算恰好等于最短路径 4 步，因此后续无法回到目标。这是策略的状态跟踪或规划错误，不是 parser、环境或评分故障。</p>
+            </div>
+            <div class="failure-trace" aria-label="失败动作序列">
+              <span class="trace-action">DOWN</span><span class="trace-arrow">→</span>
+              <span class="trace-action wrong">UP</span><span class="trace-arrow">→</span>
+              <span class="trace-action">DOWN</span><span class="trace-arrow">→</span>
+              <span class="trace-action">DOWN</span>
+            </div>
+          </section>
+        </div>
+      </section>
+
+      <section class="view" id="view-method">
+        <div class="section-hero">
+          <div class="eyebrow">可解释协议 · 最小 Agent</div>
+          <h1>这是 Agent Loop，不是一次性生成动作串</h1>
+          <p>每一轮模型只选择一个动作，环境执行后再把新状态反馈给模型。这样可以直接观察意图理解、状态跟踪和预算约束是否共同成立。</p>
+        </div>
+
+        <div class="method-grid">
+          <section class="card method-card loop-card">
+            <h2>一次完整交互循环</h2>
+            <div class="method-flow">
+              <div class="method-step"><div class="method-step-index">01</div><h4>环境观察</h4><p>提供用户意图、当前位置、剩余动作数和此前动作。</p></div>
+              <div class="method-step"><div class="method-step-index">02</div><h4>Qwen3.5-4B 决策</h4><p>根据当前状态预测下一步，不一次性输出整条路线。</p></div>
+              <div class="method-step"><div class="method-step-index">03</div><h4>固定原子动作</h4><p>只接受 UP、DOWN、LEFT、RIGHT；每次恰好移动 1 米。</p></div>
+              <div class="method-step"><div class="method-step-index">04</div><h4>环境更新与终止</h4><p>到达目标即成功；非法动作或预算耗尽则结束。</p></div>
+            </div>
+          </section>
+
+          <section class="card method-card contract-card">
+            <h3>冻结实验合同</h3>
+            <div class="contract-list">
+              <div class="contract-row"><span>模型</span><strong>Qwen3.5-4B</strong></div>
+              <div class="contract-row"><span>硬件</span><strong>1 × NVIDIA B300</strong></div>
+              <div class="contract-row"><span>训练方式</span><strong>Zero-shot，无微调</strong></div>
+              <div class="contract-row"><span>解码</span><strong>Greedy / do_sample=false</strong></div>
+              <div class="contract-row"><span>动作空间</span><strong>4 个固定 1 米动作</strong></div>
+              <div class="contract-row"><span>任务预算</span><strong>每题 ≤ 5 步</strong></div>
+            </div>
+          </section>
+
+          <section class="card method-card reasoning-card">
+            <h3>本次没有开启显式 Reasoning</h3>
+            <div class="reasoning-banner">enable_thinking = false</div>
+            <p>模型不输出 <code>&lt;think&gt;...&lt;/think&gt;</code> 或解释文字，每轮直接给出一个动作标签。这是一条干净的 direct-action policy 基线；模型前向计算仍存在内部表征，但没有额外的显式推理 token。</p>
+            <div class="code-block">while not env.terminated:<br>&nbsp;&nbsp;observation = goal + position + remaining_budget + history<br>&nbsp;&nbsp;action = qwen(observation)&nbsp;&nbsp;# one label only<br>&nbsp;&nbsp;env.step(action)&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;# returns the next state</div>
+          </section>
+
+          <section class="card method-card boundary-card">
+            <h3>本次结论能说明什么</h3>
+            <div class="boundaries">
+              <div class="boundary yes"><strong>可以说明</strong><p>在冻结的 20 个文字意图对齐样本上，Qwen3.5-4B 完成 19 个，样本成功率为 95%，达到预设门槛。</p></div>
+              <div class="boundary no"><strong>不能外推</strong><p>这不是 Minecraft / MineRL 真环境验证，也不是对所有中文表达的总体成功率保证；它是一个快速、可复现的功能性 pilot。</p></div>
+            </div>
+          </section>
+
+          <section class="card method-card boundary-card">
+            <h3>协议修订透明度</h3>
+            <p>首轮 v1 为 18/20：prompt 展示了坐标，却没有明确方向与坐标正负号的映射。v1.1 只补充通用映射 <code>UP=(0,+1)</code>、<code>DOWN=(0,-1)</code>、<code>LEFT=(-1,0)</code>、<code>RIGHT=(+1,0)</code>；测试题、模型、解码、预算和评分均未改变。首轮记录仍保留，没有被最终结果覆盖。</p>
+          </section>
+        </div>
+      </section>
+    </main>
+
+    <footer class="footer">
+      <span>冻结协议 <code>intent-alignment-text-toy-v1.1</code> · 评测源码 <code>3eaafbb5</code> · 结果证据 <code>517e0353</code></span>
+      <span class="kbd-help"><kbd>Space</kbd> 播放 / 暂停　<kbd>→</kbd> 单步　<kbd>R</kbd> 重置　<kbd>F</kbd> 全屏</span>
+    </footer>
+  </div>
+
+  <div id="selfTestStatus" aria-hidden="true">NOT_RUN</div>
+
+  <script id="evidenceData" type="application/json">{"protocol":{"name":"intent-alignment-text-toy-v1.1","dataset_sha256":"a09e7c2e3c9249125d7b610fe326fc3b09bf9618b144e2f7d54a51e267b0d75e","result_sha256":"517e0353be4b9b35f8f66a0e575761c2541a582861e3d4466866e905a8a122eb","source_commit":"3eaafbb52d93c6a014fc8edf98cba3ab070daaac","model":"Qwen3.5-4B-text-only-v1","device":"1 × NVIDIA B300 SXM6 AC","decoding":{"do_sample":false,"max_new_tokens":8,"thinking":false},"metric":"target reached within max_steps","threshold":"sample success rate >= 95% (at least 19/20)"},"summary":{"successes":19,"total":20,"success_rate":0.95,"meets_at_least_95_percent":true,"meets_strictly_above_95_percent":false},"tasks":[{"id":"right-1","instruction":"请在2步以内向右移动1米。","target":[1,0],"max_steps":2,"actions":["RIGHT"],"raw_outputs":["RIGHT"],"position":[1,0],"steps_used":1,"remaining_steps":1,"terminated":true,"success":true,"reason":"target_reached","trajectory":[[0,0],[1,0]]},{"id":"right-2","instruction":"最多走3步，向右前进2米。","target":[2,0],"max_steps":3,"actions":["RIGHT","RIGHT"],"raw_outputs":["RIGHT","RIGHT"],"position":[2,0],"steps_used":2,"remaining_steps":1,"terminated":true,"success":true,"reason":"target_reached","trajectory":[[0,0],[1,0],[2,0]]},{"id":"right-3","instruction":"在5步以内向右走3米。","target":[3,0],"max_steps":5,"actions":["RIGHT","RIGHT","RIGHT"],"raw_outputs":["RIGHT","RIGHT","RIGHT"],"position":[3,0],"steps_used":3,"remaining_steps":2,"terminated":true,"success":true,"reason":"target_reached","trajectory":[[0,0],[1,0],[2,0],[3,0]]},{"id":"right-4","instruction":"动作次数不能超过5次，请向右移动4米。","target":[4,0],"max_steps":5,"actions":["RIGHT","RIGHT","RIGHT","RIGHT"],"raw_outputs":["RIGHT","RIGHT","RIGHT","RIGHT"],"position":[4,0],"steps_used":4,"remaining_steps":1,"terminated":true,"success":true,"reason":"target_reached","trajectory":[[0,0],[1,0],[2,0],[3,0],[4,0]]},{"id":"right-5","instruction":"请用至多5步到达正右方5米处。","target":[5,0],"max_steps":5,"actions":["RIGHT","RIGHT","RIGHT","RIGHT","RIGHT"],"raw_outputs":["RIGHT","RIGHT","RIGHT","RIGHT","RIGHT"],"position":[5,0],"steps_used":5,"remaining_steps":0,"terminated":true,"success":true,"reason":"target_reached","trajectory":[[0,0],[1,0],[2,0],[3,0],[4,0],[5,0]]},{"id":"left-1","instruction":"一步之内向左走1米。","target":[-1,0],"max_steps":1,"actions":["LEFT"],"raw_outputs":["LEFT"],"position":[-1,0],"steps_used":1,"remaining_steps":0,"terminated":true,"success":true,"reason":"target_reached","trajectory":[[0,0],[-1,0]]},{"id":"left-2","instruction":"请在4个动作以内向左移动2米。","target":[-2,0],"max_steps":4,"actions":["LEFT","LEFT"],"raw_outputs":["LEFT","LEFT"],"position":[-2,0],"steps_used":2,"remaining_steps":2,"terminated":true,"success":true,"reason":"target_reached","trajectory":[[0,0],[-1,0],[-2,0]]},{"id":"left-3","instruction":"最多5步，往左边前进3米。","target":[-3,0],"max_steps":5,"actions":["LEFT","LEFT","LEFT"],"raw_outputs":["LEFT","LEFT","LEFT"],"position":[-3,0],"steps_used":3,"remaining_steps":2,"terminated":true,"success":true,"reason":"target_reached","trajectory":[[0,0],[-1,0],[-2,0],[-3,0]]},{"id":"left-4","instruction":"向左走4米，最多允许执行5次移动。","target":[-4,0],"max_steps":5,"actions":["LEFT","LEFT","LEFT","LEFT"],"raw_outputs":["LEFT","LEFT","LEFT","LEFT"],"position":[-4,0],"steps_used":4,"remaining_steps":1,"terminated":true,"success":true,"reason":"target_reached","trajectory":[[0,0],[-1,0],[-2,0],[-3,0],[-4,0]]},{"id":"left-5","instruction":"请在不超过5步的情况下到达左侧5米的位置。","target":[-5,0],"max_steps":5,"actions":["LEFT","LEFT","LEFT","LEFT","LEFT"],"raw_outputs":["LEFT","LEFT","LEFT","LEFT","LEFT"],"position":[-5,0],"steps_used":5,"remaining_steps":0,"terminated":true,"success":true,"reason":"target_reached","trajectory":[[0,0],[-1,0],[-2,0],[-3,0],[-4,0],[-5,0]]},{"id":"up-1","instruction":"请在3步以内向上移动1米。","target":[0,1],"max_steps":3,"actions":["UP"],"raw_outputs":["UP"],"position":[0,1],"steps_used":1,"remaining_steps":2,"terminated":true,"success":true,"reason":"target_reached","trajectory":[[0,0],[0,1]]},{"id":"up-2","instruction":"两步之内向上走2米。","target":[0,2],"max_steps":2,"actions":["UP","UP"],"raw_outputs":["UP","UP"],"position":[0,2],"steps_used":2,"remaining_steps":0,"terminated":true,"success":true,"reason":"target_reached","trajectory":[[0,0],[0,1],[0,2]]},{"id":"up-3","instruction":"最多用4个动作向上前进3米。","target":[0,3],"max_steps":4,"actions":["UP","UP","UP"],"raw_outputs":["UP","UP","UP"],"position":[0,3],"steps_used":3,"remaining_steps":1,"terminated":true,"success":true,"reason":"target_reached","trajectory":[[0,0],[0,1],[0,2],[0,3]]},{"id":"up-4","instruction":"请在5步以内到达上方4米处。","target":[0,4],"max_steps":5,"actions":["UP","UP","UP","UP"],"raw_outputs":["UP","UP","UP","UP"],"position":[0,4],"steps_used":4,"remaining_steps":1,"terminated":true,"success":true,"reason":"target_reached","trajectory":[[0,0],[0,1],[0,2],[0,3],[0,4]]},{"id":"up-5","instruction":"向上移动5米，动作预算为5步。","target":[0,5],"max_steps":5,"actions":["UP","UP","UP","UP","UP"],"raw_outputs":["UP","UP","UP","UP","UP"],"position":[0,5],"steps_used":5,"remaining_steps":0,"terminated":true,"success":true,"reason":"target_reached","trajectory":[[0,0],[0,1],[0,2],[0,3],[0,4],[0,5]]},{"id":"down-1","instruction":"最多2步，向下走1米。","target":[0,-1],"max_steps":2,"actions":["DOWN"],"raw_outputs":["DOWN"],"position":[0,-1],"steps_used":1,"remaining_steps":1,"terminated":true,"success":true,"reason":"target_reached","trajectory":[[0,0],[0,-1]]},{"id":"down-2","instruction":"请在3个动作以内向下移动2米。","target":[0,-2],"max_steps":3,"actions":["DOWN","DOWN"],"raw_outputs":["DOWN","DOWN"],"position":[0,-2],"steps_used":2,"remaining_steps":1,"terminated":true,"success":true,"reason":"target_reached","trajectory":[[0,0],[0,-1],[0,-2]]},{"id":"down-3","instruction":"在5步之内往下前进3米。","target":[0,-3],"max_steps":5,"actions":["DOWN","DOWN","DOWN"],"raw_outputs":["DOWN","DOWN","DOWN"],"position":[0,-3],"steps_used":3,"remaining_steps":2,"terminated":true,"success":true,"reason":"target_reached","trajectory":[[0,0],[0,-1],[0,-2],[0,-3]]},{"id":"down-4","instruction":"动作次数不超过4次，请到达下方4米处。","target":[0,-4],"max_steps":4,"actions":["DOWN","UP","DOWN","DOWN"],"raw_outputs":["DOWN","UP","DOWN","DOWN"],"position":[0,-2],"steps_used":4,"remaining_steps":0,"terminated":true,"success":false,"reason":"budget_exhausted","trajectory":[[0,0],[0,-1],[0,0],[0,-1],[0,-2]]},{"id":"down-5","instruction":"请用至多5步向下移动5米。","target":[0,-5],"max_steps":5,"actions":["DOWN","DOWN","DOWN","DOWN","DOWN"],"raw_outputs":["DOWN","DOWN","DOWN","DOWN","DOWN"],"position":[0,-5],"steps_used":5,"remaining_steps":0,"terminated":true,"success":true,"reason":"target_reached","trajectory":[[0,0],[0,-1],[0,-2],[0,-3],[0,-4],[0,-5]]}]}</script>
+  <script>
+    (() => {
+      "use strict";
+
+      const evidence = JSON.parse(document.getElementById("evidenceData").textContent);
+      const tasks = evidence.tasks;
+      const taskMap = new Map(tasks.map(task => [task.id, task]));
+      const directionNames = { right: "向右", left: "向左", up: "向上", down: "向下" };
+      const actionArrows = { RIGHT: "→", LEFT: "←", UP: "↑", DOWN: "↓" };
+      const els = Object.fromEntries([
+        "taskSelect", "intentText", "targetTag", "budgetTag", "boardStatus", "boardStatusText",
+        "targetMarker", "agentMarker", "agentCoord", "pathLine", "pathDots", "episodeStatus",
+        "currentPosition", "remainingSteps", "targetPosition", "observationValue", "modelOutput",
+        "environmentFeedback", "timeline", "roundLabel", "playButton", "stepButton", "resetButton",
+        "resultsBody"
+      ].map(id => [id, document.getElementById(id)]));
+
+      let selectedTask = taskMap.get("right-3") || tasks[0];
+      let stepIndex = 0;
+      let playing = false;
+      let paused = false;
+      let runToken = 0;
+      let phase = "observe";
+
+      const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
+      const formatCoord = coord => `(${coord[0]}, ${coord[1]})`;
+      const directionOf = task => directionNames[task.id.split("-")[0]] || "移动";
+      const currentCoord = () => selectedTask.trajectory[stepIndex];
+      const isTerminal = () => stepIndex >= selectedTask.actions.length;
+
+      function gridPoint(coord) {
+        const x = 330 + coord[0] * 36;
+        const y = 220 - coord[1] * 36;
+        return [x, y];
+      }
+
+      function populateTaskSelect() {
+        const groups = ["right", "left", "up", "down"];
+        els.taskSelect.innerHTML = groups.map(direction => {
+          const options = tasks.filter(task => task.id.startsWith(direction + "-"))
+            .map(task => `<option value="${task.id}">${task.id} · ${escapeHtml(task.instruction)}</option>`).join("");
+          return `<optgroup label="${directionNames[direction]}">${options}</optgroup>`;
+        }).join("");
+      }
+
+      function buildAxisLabels() {
+        const group = document.getElementById("axisLabels");
+        const parts = [];
+        for (let x = -5; x <= 5; x++) {
+          const [px] = gridPoint([x, 0]);
+          if (x !== 0) parts.push(`<text class="axis-label" x="${px}" y="238" text-anchor="middle">${x}</text>`);
+        }
+        for (let y = -5; y <= 5; y++) {
+          const [, py] = gridPoint([0, y]);
+          if (y !== 0) parts.push(`<text class="axis-label" x="318" y="${py + 4}" text-anchor="end">${y}</text>`);
+        }
+        parts.push('<text class="axis-label" x="318" y="238" text-anchor="end">0</text>');
+        group.innerHTML = parts.join("");
+      }
+
+      function escapeHtml(text) {
+        return String(text).replace(/[&<>'"]/g, char => ({"&":"&amp;","<":"&lt;",">":"&gt;","'":"&#39;",'"':"&quot;"})[char]);
+      }
+
+      function setPhase(nextPhase) {
+        phase = nextPhase;
+        const order = ["observe", "policy", "action", "environment"];
+        const current = order.indexOf(nextPhase);
+        document.querySelectorAll(".loop-node").forEach(node => {
+          const index = order.indexOf(node.dataset.phase);
+          node.classList.toggle("active", index === current);
+          node.classList.toggle("done", index < current);
+        });
+      }
+
+      function renderBoard() {
+        const coord = currentCoord();
+        const [ax, ay] = gridPoint(coord);
+        const [tx, ty] = gridPoint(selectedTask.target);
+        els.agentMarker.setAttribute("transform", `translate(${ax} ${ay})`);
+        els.agentCoord.textContent = `${coord[0]}, ${coord[1]}`;
+        els.targetMarker.setAttribute("transform", `translate(${tx - 330} ${ty - 220})`);
+
+        const visibleTrajectory = selectedTask.trajectory.slice(0, stepIndex + 1);
+        els.pathLine.setAttribute("points", visibleTrajectory.map(point => gridPoint(point).join(",")).join(" "));
+        els.pathDots.innerHTML = visibleTrajectory.slice(1, -1).map(point => {
+          const [x, y] = gridPoint(point);
+          return `<circle class="path-dot" cx="${x}" cy="${y}" r="5"/>`;
+        }).join("");
+      }
+
+      function renderTimeline() {
+        els.roundLabel.textContent = `${stepIndex} / ${selectedTask.actions.length} 轮`;
+        if (stepIndex === 0) {
+          els.timeline.innerHTML = '<div class="timeline-empty">点击“播放实测轨迹”开始</div>';
+          return;
+        }
+        els.timeline.innerHTML = selectedTask.actions.slice(0, stepIndex).map((action, index) => {
+          const from = selectedTask.trajectory[index];
+          const to = selectedTask.trajectory[index + 1];
+          const wrongClass = selectedTask.id === "down-4" && index === 1 ? " style=\"color:var(--danger)\"" : "";
+          return `<div class="timeline-item"><span class="timeline-index">${index + 1}</span><span class="timeline-action"${wrongClass}>${actionArrows[action]} ${action}</span><span class="timeline-move">${formatCoord(from)} → ${formatCoord(to)}</span></div>`;
+        }).join("");
+        els.timeline.scrollTop = els.timeline.scrollHeight;
+      }
+
+      function renderStatus() {
+        const coord = currentCoord();
+        const terminal = isTerminal();
+        const reached = terminal && selectedTask.success;
+        const failed = terminal && !selectedTask.success;
+        const remaining = Math.max(0, selectedTask.max_steps - stepIndex);
+
+        els.currentPosition.textContent = formatCoord(coord);
+        els.remainingSteps.textContent = `${remaining} 步`;
+        els.targetPosition.textContent = formatCoord(selectedTask.target);
+        els.observationValue.textContent = `当前位置 ${formatCoord(coord)}；剩余 ${remaining} 步；${reached ? "已到达目标" : "尚未到达目标"}。`;
+        els.boardStatus.className = "board-state-badge" + (reached ? " success" : failed ? " failure" : "");
+        els.episodeStatus.className = "status-pill" + (reached ? " success" : failed ? " failure" : "");
+
+        if (reached) {
+          els.boardStatusText.textContent = "目标已到达";
+          els.episodeStatus.textContent = "成功";
+          els.environmentFeedback.textContent = `到达 ${formatCoord(coord)}，环境自动结束。`;
+        } else if (failed) {
+          els.boardStatusText.textContent = "预算已耗尽";
+          els.episodeStatus.textContent = "失败";
+          els.environmentFeedback.textContent = `停在 ${formatCoord(coord)}，未到达目标 ${formatCoord(selectedTask.target)}。`;
+        } else if (paused) {
+          els.boardStatusText.textContent = "已暂停";
+          els.episodeStatus.textContent = "已暂停";
+          els.environmentFeedback.textContent = "当前状态已保留，可继续播放或重置。";
+        } else if (stepIndex === 0) {
+          els.boardStatusText.textContent = "等待执行";
+          els.episodeStatus.textContent = "未开始";
+          els.environmentFeedback.textContent = "尚未执行动作";
+        } else {
+          els.boardStatusText.textContent = `已执行 ${stepIndex} 步`;
+          els.episodeStatus.textContent = "运行中";
+        }
+
+        const buttonLabel = els.playButton.querySelector("span");
+        buttonLabel.textContent = playing ? "暂停" : terminal ? "重新播放" : paused ? "继续播放" : "播放实测轨迹";
+        els.stepButton.disabled = terminal;
+        els.stepButton.style.opacity = terminal ? ".45" : "1";
+      }
+
+      function renderAll() {
+        renderBoard();
+        renderTimeline();
+        renderStatus();
+      }
+
+      function selectTask(taskId) {
+        const task = taskMap.get(taskId);
+        if (!task) return;
+        runToken++;
+        playing = false;
+        paused = false;
+        selectedTask = task;
+        stepIndex = 0;
+        phase = "observe";
+        els.taskSelect.value = task.id;
+        els.intentText.textContent = task.instruction;
+        els.targetTag.textContent = `目标 ${formatCoord(task.target)}`;
+        els.budgetTag.textContent = `最多 ${task.max_steps} 步`;
+        els.modelOutput.textContent = "等待动作";
+        els.modelOutput.className = "action-output muted";
+        els.environmentFeedback.textContent = "尚未执行动作";
+        setPhase("observe");
+        renderAll();
+      }
+
+      function resetTask() {
+        selectTask(selectedTask.id);
+      }
+
+      async function executeNext(token) {
+        if (isTerminal() || token !== runToken) return false;
+        const action = selectedTask.actions[stepIndex];
+        const before = selectedTask.trajectory[stepIndex];
+        const after = selectedTask.trajectory[stepIndex + 1];
+        const remainingBefore = selectedTask.max_steps - stepIndex;
+
+        setPhase("observe");
+        els.observationValue.textContent = `当前位置 ${formatCoord(before)}；剩余 ${remainingBefore} 步；尚未到达目标。`;
+        els.modelOutput.textContent = "读取实测动作…";
+        els.modelOutput.className = "action-output muted";
+        els.environmentFeedback.textContent = "等待模型输出";
+        await sleep(420);
+        if (token !== runToken) return false;
+
+        setPhase("policy");
+        await sleep(430);
+        if (token !== runToken) return false;
+
+        setPhase("action");
+        els.modelOutput.textContent = action;
+        els.modelOutput.className = "action-output";
+        els.environmentFeedback.textContent = `收到合法动作 ${action}，准备执行。`;
+        await sleep(420);
+        if (token !== runToken) return false;
+
+        setPhase("environment");
+        stepIndex += 1;
+        renderBoard();
+        renderTimeline();
+        const reached = isTerminal() && selectedTask.success;
+        const exhausted = isTerminal() && !selectedTask.success;
+        els.environmentFeedback.textContent = reached
+          ? `移动到 ${formatCoord(after)}，到达目标，episode 成功。`
+          : exhausted
+            ? `移动到 ${formatCoord(after)}，预算耗尽，episode 失败。`
+            : `移动到 ${formatCoord(after)}；环境返回新观察。`;
+        renderStatus();
+        await sleep(560);
+        if (token !== runToken) return false;
+        if (!isTerminal()) setPhase("observe");
+        return true;
+      }
+
+      async function play() {
+        if (playing) {
+          playing = false;
+          paused = true;
+          runToken++;
+          els.modelOutput.textContent = "已暂停";
+          els.modelOutput.className = "action-output muted";
+          setPhase("observe");
+          renderStatus();
+          return;
+        }
+        if (isTerminal()) resetTask();
+        paused = false;
+        playing = true;
+        const token = ++runToken;
+        renderStatus();
+        while (playing && !isTerminal() && token === runToken) {
+          const advanced = await executeNext(token);
+          if (!advanced) break;
+          if (!isTerminal()) await sleep(250);
+        }
+        if (token === runToken) {
+          playing = false;
+          renderStatus();
+        }
+      }
+
+      async function stepOnce() {
+        if (isTerminal()) return;
+        playing = false;
+        paused = false;
+        const token = ++runToken;
+        renderStatus();
+        await executeNext(token);
+        if (token === runToken) renderStatus();
+      }
+
+      function switchView(name) {
+        document.querySelectorAll(".nav-button").forEach(button => button.classList.toggle("active", button.dataset.view === name));
+        document.querySelectorAll(".view").forEach(view => view.classList.toggle("active", view.id === `view-${name}`));
+        window.scrollTo({ top: 0, behavior: "smooth" });
+      }
+
+      function renderResults(filter = "all") {
+        const visible = tasks.filter(task => filter === "all" || (filter === "success" ? task.success : !task.success));
+        els.resultsBody.innerHTML = visible.map(task => {
+          const actions = task.actions.join(" → ");
+          return `<tr data-task-id="${task.id}" class="${task.success ? "" : "failure-row"}" tabindex="0" role="button" aria-label="回放 ${task.id}"><td><span class="task-id">${task.id}</span></td><td><span class="task-instruction">${escapeHtml(task.instruction)}</span></td><td>${formatCoord(task.target)} / ${task.max_steps}步</td><td><span class="action-seq">${actions}</span></td><td><span class="status-icon ${task.success ? "success" : "failure"}">${task.success ? "成功" : "失败"}</span></td></tr>`;
+        }).join("");
+      }
+
+      function openTaskFromTable(row) {
+        selectTask(row.dataset.taskId);
+        switchView("demo");
+      }
+
+      function toggleFullscreen() {
+        if (!document.fullscreenElement) document.documentElement.requestFullscreen?.();
+        else document.exitFullscreen?.();
+      }
+
+      function runSelfTest() {
+        const errors = [];
+        if (tasks.length !== 20) errors.push("task-count");
+        if (tasks.filter(task => task.success).length !== 19) errors.push("success-count");
+        const right3 = taskMap.get("right-3");
+        if (!right3 || right3.actions.join(",") !== "RIGHT,RIGHT,RIGHT") errors.push("right-3-trace");
+        const failure = taskMap.get("down-4");
+        if (!failure || failure.success || failure.actions.join(",") !== "DOWN,UP,DOWN,DOWN") errors.push("failure-trace");
+        if (document.querySelectorAll('script[src],link[rel="stylesheet"][href]').length) errors.push("external-dependency");
+        const status = errors.length ? `FAIL:${errors.join(",")}` : "PASS";
+        document.getElementById("selfTestStatus").textContent = status;
+        document.body.dataset.selfTest = status;
+        return { status, errors };
+      }
+
+      document.querySelectorAll(".nav-button").forEach(button => button.addEventListener("click", () => switchView(button.dataset.view)));
+      document.querySelectorAll(".filter-button").forEach(button => button.addEventListener("click", () => {
+        document.querySelectorAll(".filter-button").forEach(item => item.classList.toggle("active", item === button));
+        renderResults(button.dataset.filter);
+      }));
+      els.taskSelect.addEventListener("change", event => selectTask(event.target.value));
+      document.getElementById("successExample").addEventListener("click", () => selectTask("right-3"));
+      document.getElementById("failureExample").addEventListener("click", () => selectTask("down-4"));
+      els.playButton.addEventListener("click", play);
+      els.stepButton.addEventListener("click", stepOnce);
+      els.resetButton.addEventListener("click", resetTask);
+      document.getElementById("printButton").addEventListener("click", () => window.print());
+      document.getElementById("fullscreenButton").addEventListener("click", toggleFullscreen);
+      els.resultsBody.addEventListener("click", event => {
+        const row = event.target.closest("tr[data-task-id]");
+        if (row) openTaskFromTable(row);
+      });
+      els.resultsBody.addEventListener("keydown", event => {
+        if (event.key === "Enter" || event.key === " ") {
+          const row = event.target.closest("tr[data-task-id]");
+          if (row) {
+            event.preventDefault();
+            event.stopPropagation();
+            openTaskFromTable(row);
+          }
+        }
+      });
+      document.addEventListener("keydown", event => {
+        const focused = document.activeElement;
+        if (focused?.matches?.("select, input, textarea, [contenteditable='true']")) return;
+        if (event.key.toLowerCase() === "f") { event.preventDefault(); toggleFullscreen(); return; }
+        if (!document.getElementById("view-demo").classList.contains("active")) return;
+        if (focused?.matches?.("button, a, [role='button']") && (event.code === "Space" || event.key === "Enter")) return;
+        if (event.code === "Space") { event.preventDefault(); play(); }
+        else if (event.key === "ArrowRight") { event.preventDefault(); stepOnce(); }
+        else if (event.key.toLowerCase() === "r") { event.preventDefault(); resetTask(); }
+      });
+
+      populateTaskSelect();
+      buildAxisLabels();
+      renderResults();
+      const params = new URLSearchParams(location.search);
+      const requestedTask = params.get("task");
+      selectTask(taskMap.has(requestedTask) ? requestedTask : selectedTask.id);
+      const requestedView = params.get("view");
+      if (["demo", "results", "method"].includes(requestedView)) switchView(requestedView);
+      window.IntentAlignmentDemo = { evidence, selectTask, resetTask, runSelfTest };
+      if (params.get("selftest") === "1") runSelfTest();
+    })();
+  </script>
+</body>
+</html>

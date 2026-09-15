@@ -22,6 +22,8 @@ Agent: RIGHT  -> 环境坐标 (3, 0)，成功并自动结束
 
 完整协议见 [`docs/TEST_PROTOCOL.md`](docs/TEST_PROTOCOL.md)。
 
+Windows 双击即用的单文件演示见 [`showcase/intent-alignment-showcase.html`](showcase/intent-alignment-showcase.html)，操作说明见 [`showcase/README.md`](showcase/README.md)。
+
 ## 实测结果
 
 Qwen3.5-4B 在单张 NVIDIA B300 上按冻结 v1.1 协议取得 **19/20（95%）**，达到“95%以上”的样本门槛。完整逐题结果与首轮18/20记录见 [`docs/RESULTS.md`](docs/RESULTS.md)。
