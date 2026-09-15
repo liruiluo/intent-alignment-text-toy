@@ -17,3 +17,10 @@ def test_ray_tmpdir_is_short_and_independent_of_long_run_path():
         + "/ray/session_2026-09-15_23-34-16_088688_9999999/sockets/plasma_store"
     )
     assert len(longest_expected.encode()) <= 107
+
+
+def test_training_launcher_requires_pinned_transfer_queue():
+    script = LAUNCHER.read_text(encoding="utf-8")
+
+    assert '"transfer_queue": "0.1.8"' in script
+    assert 'importlib.metadata.version("TransferQueue")' in script

@@ -68,6 +68,7 @@ check_sha256 "$MODEL_PATH/model-00001-of-00002.safetensors" "$EXPECTED_MODEL_WEI
 check_sha256 "$MODEL_PATH/model-00002-of-00002.safetensors" "$EXPECTED_MODEL_WEIGHT_2_SHA256" "model shard 2"
 
 "$PYTHON_BIN" - <<'PY_RUNTIME_GATE'
+import importlib.metadata
 import platform
 
 import torch
@@ -77,12 +78,14 @@ expected = {
     "python": "3.12.12",
     "torch": "2.11.0+cu130",
     "transformers": "5.5.3",
+    "transfer_queue": "0.1.8",
     "device": "NVIDIA B300 SXM6 AC",
 }
 actual = {
     "python": platform.python_version(),
     "torch": torch.__version__,
     "transformers": transformers.__version__,
+    "transfer_queue": importlib.metadata.version("TransferQueue"),
     "device": torch.cuda.get_device_name(0) if torch.cuda.device_count() == 1 else None,
 }
 if actual != expected:
