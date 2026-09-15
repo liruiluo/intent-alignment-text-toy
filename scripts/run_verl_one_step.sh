@@ -101,6 +101,13 @@ export TOKENIZERS_PARALLELISM=false
 export HYDRA_FULL_ERROR=1
 export WANDB_MODE=disabled
 
+# Ray appends a roughly 67-byte session/socket suffix. Keep its local root short
+# so the final AF_UNIX socket path stays below Linux's 107-byte limit even when
+# RUN_DIR is a long shared-storage experiment path.
+run_dir_sha256=$(printf '%s' "$RUN_DIR" | sha256sum | awk '{print $1}')
+export RAY_TMPDIR="/tmp/iatoy-ray-${run_dir_sha256:0:12}"
+mkdir -p "$RAY_TMPDIR"
+
 "$PYTHON_BIN" -m verl.trainer.main_ppo \
   algorithm.adv_estimator=grpo \
   algorithm.use_kl_in_reward=false \
