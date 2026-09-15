@@ -10,3 +10,7 @@ dist/
 results/local-*
 
 .ruff_cache/
+
+# Reproducible veRL staging artifacts are generated outside the source repo.
+data/*.parquet
+runs/

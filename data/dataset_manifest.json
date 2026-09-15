@@ -1,0 +1,96 @@
+{
+  "action_contract": "UP/DOWN/LEFT/RIGHT; exactly 1 metre per action; max_steps <= 5",
+  "files": {
+    "intent_alignment_test_100.jsonl": {
+      "count": 100,
+      "sha256": "b2f7560c4466949136bec09bd2e8532a27def45696c5eeed3b4fcc99de2c1675"
+    },
+    "intent_alignment_train_400.jsonl": {
+      "count": 400,
+      "sha256": "c7632a967e4e6ed14ebae3d87ad1f43ecab2f0da66c70a3ea11659746688a164"
+    }
+  },
+  "generation_is_deterministic": true,
+  "generator": "generate_dataset.py",
+  "generator_sha256": "feb1ccc44a43d7fac8f36b7aeef58e5352595eac55c7e305d085ec7304a7e06c",
+  "protocol": "intent-alignment-text-toy-v2",
+  "semantic_grid": "4 cardinal directions x distances 1..5",
+  "split_rule": "20 train and 5 test lexical template families; no family overlap",
+  "validation": {
+    "test_cell_counts": {
+      "DOWN-1": 5,
+      "DOWN-2": 5,
+      "DOWN-3": 5,
+      "DOWN-4": 5,
+      "DOWN-5": 5,
+      "LEFT-1": 5,
+      "LEFT-2": 5,
+      "LEFT-3": 5,
+      "LEFT-4": 5,
+      "LEFT-5": 5,
+      "RIGHT-1": 5,
+      "RIGHT-2": 5,
+      "RIGHT-3": 5,
+      "RIGHT-4": 5,
+      "RIGHT-5": 5,
+      "UP-1": 5,
+      "UP-2": 5,
+      "UP-3": 5,
+      "UP-4": 5,
+      "UP-5": 5
+    },
+    "test_count": 100,
+    "test_template_families": [
+      "test-f01",
+      "test-f02",
+      "test-f03",
+      "test-f04",
+      "test-f05"
+    ],
+    "train_cell_counts": {
+      "DOWN-1": 20,
+      "DOWN-2": 20,
+      "DOWN-3": 20,
+      "DOWN-4": 20,
+      "DOWN-5": 20,
+      "LEFT-1": 20,
+      "LEFT-2": 20,
+      "LEFT-3": 20,
+      "LEFT-4": 20,
+      "LEFT-5": 20,
+      "RIGHT-1": 20,
+      "RIGHT-2": 20,
+      "RIGHT-3": 20,
+      "RIGHT-4": 20,
+      "RIGHT-5": 20,
+      "UP-1": 20,
+      "UP-2": 20,
+      "UP-3": 20,
+      "UP-4": 20,
+      "UP-5": 20
+    },
+    "train_count": 400,
+    "train_template_families": [
+      "train-f01",
+      "train-f02",
+      "train-f03",
+      "train-f04",
+      "train-f05",
+      "train-f06",
+      "train-f07",
+      "train-f08",
+      "train-f09",
+      "train-f10",
+      "train-f11",
+      "train-f12",
+      "train-f13",
+      "train-f14",
+      "train-f15",
+      "train-f16",
+      "train-f17",
+      "train-f18",
+      "train-f19",
+      "train-f20"
+    ]
+  }
+}

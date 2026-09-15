@@ -18,7 +18,7 @@ def main() -> None:
 
     def oracle(requests):
         outputs = []
-        for task, env, _actions in requests:
+        for task, env, _actions, _raw_outputs in requests:
             x, y = env.position
             target_x, target_y = task.target
             if x < target_x:

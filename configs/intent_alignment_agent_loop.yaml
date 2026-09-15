@@ -1,0 +1,3 @@
+- name: intent_alignment_agent
+  _target_: intent_alignment_toy.verl_agent_loop.IntentAlignmentAgentLoop
+  action_max_new_tokens: 8

@@ -15,7 +15,7 @@ def test_oracle_scores_twenty_of_twenty():
 
     def oracle(requests):
         actions = []
-        for task, env, _history in requests:
+        for task, env, _history, _raw_outputs in requests:
             x, y = env.position
             target_x, target_y = task.target
             if x < target_x:
