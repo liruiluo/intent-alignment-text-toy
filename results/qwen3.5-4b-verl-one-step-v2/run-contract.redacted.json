@@ -1,0 +1,100 @@
+{
+  "algorithm": {
+    "actor_lr": 1e-06,
+    "attention_backend": "triton",
+    "name": "GRPO",
+    "ppo_epochs": 1,
+    "ppo_mini_batch_size_config": 400,
+    "ppo_mini_batch_size_effective": 800,
+    "rollout_backend": "sglang",
+    "rollout_n": 2,
+    "sampling_backend": "pytorch",
+    "thinking": false,
+    "total_training_steps": 1,
+    "train_batch_size": 400,
+    "trajectory_count": 800
+  },
+  "constraints": {
+    "do_not_release_allocation": true,
+    "no_intermediate_checkpoint_eval": true,
+    "no_public_or_cross_pod_service": true,
+    "restore_holder_after_run": true
+  },
+  "created_at_utc": "2026-09-15T18:21:28.076440+00:00",
+  "data": {
+    "manifest_sha256": "3423ef1ea686e7604975ddc10c78942a4ba910ca83d025604e16c33f11047136",
+    "test_count": 100,
+    "test_jsonl_sha256": "b2f7560c4466949136bec09bd2e8532a27def45696c5eeed3b4fcc99de2c1675",
+    "test_parquet": "/REDACTED/TEST_PARQUET",
+    "test_parquet_sha256": "455a4c17c370bf40802a282215f69c71a5d21326ad185375211099bd6fe68730",
+    "train_count": 400,
+    "train_jsonl_sha256": "c7632a967e4e6ed14ebae3d87ad1f43ecab2f0da66c70a3ea11659746688a164",
+    "train_parquet": "/REDACTED/TRAIN_PARQUET",
+    "train_parquet_sha256": "4ab5bfa4f55f073617795c403a10a1b45310d136691ea5dff0377a58cb991ae1",
+    "train_test_template_families_disjoint": true
+  },
+  "diagnostics": {
+    "fix": "export child variables before invocation; export preexisting readonly CUDA_HOME without reassignment",
+    "readonly_env_assignment_fixed": true,
+    "training_shell_xtrace": true
+  },
+  "evaluation": {
+    "batch_size": 100,
+    "before_and_after_same_test100": true,
+    "do_sample": false,
+    "max_new_tokens": 8,
+    "success_threshold": 0.95
+  },
+  "hardware": {
+    "allocation_idle_timeout_hours": -1,
+    "gpu": "NVIDIA B300 SXM6 AC",
+    "gpu_count": 1,
+    "new_allocation_requested": false,
+    "platform_task": "REDACTED_PLATFORM_TASK",
+    "pod": "REDACTED_POD_NAME",
+    "pod_ip": "REDACTED_POD_IP"
+  },
+  "launcher": {
+    "path": "/REDACTED/RUN_DIR/contract/launch.sh",
+    "sha256": "f5b905037be2d4a6a34e8dc511704af267d147d534ddd7e43d513191329423c9"
+  },
+  "model": {
+    "config_sha256": "ddc63e1c717afa86c865bb5e01313d89d72bb53b97ad4a8a03ba8510c0621670",
+    "identity": "Qwen3.5-4B full conditional-generation checkpoint",
+    "index_sha256": "cf3f798ee02ba45f9622aa8892a47369ab667d0afbf154ee7c2212de42e6302d",
+    "path": "/REDACTED/BASE_MODEL_ROOT",
+    "weight_files": {
+      "00001-of-00002": "26a93f066e1916adb13453dae5a0c707c0fbc71299ed98779571a907b8e74c61",
+      "00002-of-00002": "cb544bd9bfae93dc59b0f22b292f5933573854a7f9b97835c67060d7d910e188"
+    }
+  },
+  "objective": "Full Qwen3.5-4B, native veRL AgentLoop, one GRPO optimizer/global update, paired frozen test100 evaluation",
+  "prior_failed_attempts": [
+    "/REDACTED/PRIVATE_PATH",
+    "/REDACTED/PRIVATE_PATH",
+    "/REDACTED/PRIVATE_PATH",
+    "/REDACTED/PRIVATE_PATH",
+    "/REDACTED/PRIVATE_PATH",
+    "/REDACTED/PRIVATE_PATH"
+  ],
+  "run_id": "intent-v2-verl090-sglang0512-grpo-step1-qwen35-4b-full-b300-20260916-run3",
+  "runtime": {
+    "cuda_home": "/REDACTED/CUDA_HOME",
+    "python": "/REDACTED/PYTHON_BIN",
+    "python_version": "3.12.12",
+    "runtime_root": "/REDACTED/RUNTIME_ROOT",
+    "sglang_version": "0.5.12",
+    "torch_version": "2.11.0+cu130",
+    "transfer_queue_overlay": "/REDACTED/TRANSFER_QUEUE_OVERLAY",
+    "transfer_queue_version": "0.1.8",
+    "transformers_version": "5.5.3",
+    "verl_commit": "483b8a009ba3a97563edee3a19887e4862b8094a"
+  },
+  "schema": "intent_alignment_verl_one_step_contract_v2",
+  "source": {
+    "commit": "100f0f4c117779f941cf38f61ef095f58c2ea1a6",
+    "github": "https://github.com/liruiluo/intent-alignment-text-toy/commit/100f0f4c117779f941cf38f61ef095f58c2ea1a6",
+    "path": "/REDACTED/SOURCE_ROOT",
+    "source_files_manifest_sha256": "d0830f06abba66f974d9e15c11fb815f74c99e9f00b87578a504a57fddd10206"
+  }
+}

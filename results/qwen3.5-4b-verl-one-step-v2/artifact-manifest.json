@@ -1,0 +1,47 @@
+{
+  "publication_note": "Public copies preserve task outputs, rollout rows, metrics, and tensor probes while replacing machine-local paths, hostname, Pod IP, and platform task identity, removing ANSI control sequences, and trimming semantically empty trailing whitespace. Source and published hashes are labelled separately.",
+  "published_artifact_sha256": {
+    "after-test100.json": "2dcbe3acdaffed5a811455de072bd5787b32dcb6b7abb72f437df78a63ce63c2",
+    "before-test100.json": "f3b5b104315ba1b1098d895218779fa5a246ed9100d15eb6ac0d6de637cd968f",
+    "checkpoint-inventory.json": "ce2af8976b5f3c558fac646f0d0b88af7dc02745ee77a3354b3fcd90cb2f7897",
+    "launch.redacted.sh": "e5dd4f2e89a436db0916fa6c8576249160ca4c20ff98673d20920ad1d81f7841",
+    "paired-comparison.json": "619de8c2e5960179d9d719801abbf80470c630af8d3f08c856653f78c09aba29",
+    "parameter-evidence.json": "cc18cd62b4a8c5cddaa4ce9bdf427005f08a21d50dd57a85ee6103ccbe0be05d",
+    "resolved-config.redacted.yaml": "fa1522621a7063df1ae90ef0bf558d4367cae41146b68f63a60b24c116c6a9d1",
+    "result-status.json": "ac84f41e4bd273179ba80f5e55114f2b4b326eddafb504fec09fb84cc24931c7",
+    "rollouts-step1.jsonl": "49a326573bfb51c22cb75a1dee0efdfea1a8db9881cbd2e4d3b579c76a740a44",
+    "run-contract.redacted.json": "35b6ab541622fecb85938fce3b799d830e5a73bfd20ff4db9e5b420b5a301193",
+    "training-complete.json": "d2cea9fdd91eec621487f0c10de6d782bf00b1b52a46a9bbb818e2b71e4177e7",
+    "training-evidence.json": "5f4b64fb090c3343f7d24b6ee6d22c860dbbc7bbbe934f60364d39d5185e567a",
+    "training-log.redacted.txt": "afccd2bdad879267cb11984579345a4a77cac0859ac90b0e94f122c2577ee8be"
+  },
+  "redacted_fields": [
+    "evaluation/*.model.path",
+    "evaluation/*.runtime.hostname",
+    "parameter-evidence.base_path",
+    "parameter-evidence.after_path",
+    "training-log machine-local paths and Pod identity",
+    "run-contract machine-local paths and Pod identity",
+    "resolved-config machine-local paths",
+    "launcher machine-local paths",
+    "result-status.hardware_task"
+  ],
+  "run_id": "intent-v2-verl090-sglang0512-grpo-step1-qwen35-4b-full-b300-20260916-run3",
+  "schema": "intent_alignment_public_result_manifest_v2",
+  "source_artifact_sha256": {
+    "after-test100.json": "8c6a6a1255bcaea72133f0a137c0839bd52160ed188a9505c40136adbc80149c",
+    "before-test100.json": "0104c0385a9da5ff5e6d551bb31ebaf84a63b71b2ba16af29390240f4216237a",
+    "checkpoint-inventory.json": "ce2af8976b5f3c558fac646f0d0b88af7dc02745ee77a3354b3fcd90cb2f7897",
+    "launch.redacted.sh": "f5b905037be2d4a6a34e8dc511704af267d147d534ddd7e43d513191329423c9",
+    "paired-comparison.json": "5fe927aaec0b372c1a84bb499a5ebc3b4efbb5a58ca59311a8909177d9d28156",
+    "parameter-evidence.json": "e2c2f57a95723cda4000e8a5504c895440338a201f0444e80273d425c5e04db3",
+    "resolved-config.redacted.yaml": "18d5db52b0d205819933e82517e13d483979b2b051d4357bc529a93468e6cae9",
+    "result-status.json": "809f28f0fc9e5121bb66b6316e4b7cbbf1e347a69993415bf23faa7f176309c7",
+    "rollouts-step1.jsonl": "49a326573bfb51c22cb75a1dee0efdfea1a8db9881cbd2e4d3b579c76a740a44",
+    "run-contract.redacted.json": "556c3f417c0a3420219e36707ededb64a5e4c879224502d26415791bdc702268",
+    "training-complete.json": "e8febeadadd320d7f278a0ae4b1267cd374ec6c49076fed027ef852d5da0af14",
+    "training-evidence.json": "5995459319a1c48c62c5aa9ce698f3602f78cd9c37334e5084c60bd015645444",
+    "training-log.redacted.txt": "8dc44833b60ad727a054115c7857499c1dd8d1f5958d30d3bcd207ec85ba5ec6"
+  },
+  "source_commit": "100f0f4c117779f941cf38f61ef095f58c2ea1a6"
+}

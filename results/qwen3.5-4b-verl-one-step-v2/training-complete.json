@@ -1,0 +1,11 @@
+{
+  "checkpoint_inventory_file": "checkpoint-inventory.json",
+  "checkpoint_inventory_sha256": "ce2af8976b5f3c558fac646f0d0b88af7dc02745ee77a3354b3fcd90cb2f7897",
+  "completed_at": "2026-09-16T02:45:53+0800",
+  "evidence": "training log reached 1/1 and checkpoint contains actor+optimizer+data+HF model",
+  "global_step": 1,
+  "optimizer_updates_actual": 1,
+  "run_id": "intent-v2-verl090-sglang0512-grpo-step1-qwen35-4b-full-b300-20260916-run3",
+  "source_artifact_sha256": "e8febeadadd320d7f278a0ae4b1267cd374ec6c49076fed027ef852d5da0af14",
+  "trainer_exit_code": 0
+}

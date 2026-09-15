@@ -1,59 +1,102 @@
-# Qwen3.5-4B 单卡结果
+# Qwen3.5-4B 单卡 veRL 单步训练结果
 
 ## 结论
 
-- 冻结协议 v1.1：**19/20，样本成功率 95%**。
-- 达到本项目预先声明的“95%以上（`>=95%`）”门槛。
-- 没有达到“严格大于95%”口径；20题时该口径要求20/20。
-- 这是冻结20题上的功能性 pilot，不可外推为总体成功率的95%统计保证。
+- 训练前冻结 test100：**100/100（100%）**。
+- 使用 veRL v0.9.0 在一张现有 NVIDIA B300 上完成 **1 个 GRPO optimizer/global update**。
+- 训练后同一冻结 test100：**100/100（100%）**。
+- 成功率变化：**0 个百分点**。
+- 参数审计确认 policy 权重发生真实数值变化。
 
-## 运行配置
+因此，本轮证明的是：单卡原生 veRL AgentLoop 可以完成一次端到端训练更新，并在该冻结测试集上保持满分。训练前已饱和，本轮数据不支持“训练提高成功率”的结论。
 
-- 模型：`Qwen3.5-4B-text-only-v1`，zero-shot，未训练、未微调。
-- 硬件：单张 NVIDIA B300 SXM6 AC。
-- 解码：greedy，`do_sample=false`，thinking关闭，每轮最多生成8 token。
-- 动作：`UP / DOWN / LEFT / RIGHT`，每次固定移动1米。
-- 主指标：在题目给定的、最多5步的预算内到达目标坐标。
-- 数据 SHA256：`a09e7c2e3c9249125d7b610fe326fc3b09bf9618b144e2f7d54a51e267b0d75e`。
-- 执行源码提交：`3eaafbb52d93c6a014fc8edf98cba3ab070daaac`。
+## 冻结设置
 
-## 分组结果
+| 项目 | 设置 |
+|---|---|
+| 模型 | 完整 Qwen3.5-4B |
+| 环境 | 文字二维移动 AgentLoop |
+| 动作 | `UP / DOWN / LEFT / RIGHT`，每步固定 1 米 |
+| 训练集 / 测试集 | 400 / 100，模板族不重合 |
+| 最大动作预算 | 每题不超过 5 步 |
+| 显式 reasoning | 关闭，`enable_thinking=false` |
+| 框架 | veRL v0.9.0，commit `483b8a009ba3a97563edee3a19887e4862b8094a` |
+| 算法 | GRPO |
+| 硬件 | 1 × NVIDIA B300（复用现有 allocation；未申请新卡） |
+| 评测 | Greedy，训练前后使用同一冻结 test100 |
 
-### 按方向
+执行源码提交：`100f0f4c117779f941cf38f61ef095f58c2ea1a6`。
 
-| 方向 | 成功/总数 |
-|---|---:|
-| 右 | 5/5 |
-| 左 | 5/5 |
-| 上 | 5/5 |
-| 下 | 4/5 |
+## 单步训练硬证据
 
-### 按最短动作长度
+- `global_step = 1`
+- optimizer update 目标与日志实测均为 1
+- 800 条 trajectory
+- 400 个 GRPO group，每组 2 条 rollout
+- 66 个 mixed-reward group
+- reward 取值为 `{0, 1}`
+- `actor/grad_norm = 6.470837116241455`
+- checkpoint 清单同时包含 model、optimizer、extra、data 和 Hugging Face model，并记录逐文件大小与 SHA256
+- 单步训练阶段耗时约 785.6 秒
 
-| 距离/最短步数 | 成功/总数 |
-|---:|---:|
-| 1 | 4/4 |
-| 2 | 4/4 |
-| 3 | 4/4 |
-| 4 | 3/4 |
-| 5 | 4/4 |
+## 参数变化证据
 
-## 唯一失败样本
+veRL 把两分片 BF16 base checkpoint 导出为单文件 FP32 `model.safetensors`，同时进行了已知的配置规范化。因此，不能用“文件名或整文件 hash 不同”直接代替参数变化证明。
 
-- `down-4`：动作次数不超过4次，请到达下方4米处。
-  - 目标：`(0, -4)`，预算：4步。
-  - 输出：`DOWN -> UP -> DOWN -> DOWN`。
-  - 终点：`(0, -2)`，因预算耗尽失败。
+语义审计结果：
 
-## 协议修订透明度
+- 训练前后文本 policy core 的 426 个 tensor key 完全一致；
+- 固定检查第 0、1、8、16、24、31 层的 input LayerNorm，共 6 个 probe；
+- 6/6 probe 在 FP32 数值上发生变化；
+- 重新量化到 BF16 后仍有 8 个值发生变化；
+- `weights_changed = true`；
+- `effective_bfloat16_weights_changed = true`。
 
-- 首轮 v1 为18/20。prompt 显示了坐标，却没有声明方向对应的坐标正负号。
-- v1.1 只补充通用映射 `UP=(0,+1), DOWN=(0,-1), LEFT=(-1,0), RIGHT=(+1,0)`；数据、模型、解码、预算和评分不变。
-- v1 原始逐题结果仍保留在 `results/qwen3.5-4b-zero-shot-v1-under-specified-coordinates.json`，没有用 v1.1 覆盖。
+base 中 15 个 MTP tensor 因导出配置把 `mtp_num_hidden_layers` 从 1 规范化为 0 而排除；视觉 tensor 前后数量均为 297。完整差异和 probe hash 见 [`parameter-evidence.json`](../results/qwen3.5-4b-verl-one-step-v2/parameter-evidence.json)。
 
-## 证据文件
+## 配对评测
 
-- `results/qwen3.5-4b-zero-shot-v1.1.json`：最终逐题原始输出、动作与轨迹。
-- `results/qwen3.5-4b-zero-shot-v1.1.status.json`：执行提交与持久化结果哈希。
-- `results/qwen3.5-4b-zero-shot-v1-under-specified-coordinates.json`：首轮18/20结果。
-- `results/oracle.json`：环境和评分链的20/20 oracle 自检。
+| 阶段 | 成功数 | 成功率 | 达到 95% 门槛 |
+|---|---:|---:|---:|
+| 训练前 | 100 / 100 | 100% | 是 |
+| 训练后 | 100 / 100 | 100% | 是 |
+| 变化 | 0 | 0 pp | — |
+
+逐题配对结果：
+
+- improved：0
+- regressed：0
+- unchanged success：100
+- unchanged failure：0
+
+## 结果文件
+
+可审计副本位于 [`results/qwen3.5-4b-verl-one-step-v2/`](../results/qwen3.5-4b-verl-one-step-v2/)：
+
+- `before-test100.json`：训练前 100 题逐步轨迹；
+- `after-test100.json`：训练后 100 题逐步轨迹；
+- `paired-comparison.json`：逐题配对结果和身份校验；
+- `training-evidence.json`：global step、实际 optimizer update、数据/源码/runtime 和审计文件绑定；
+- `rollouts-step1.jsonl`：完整 800 条训练 trajectory，可重算 400 组和 66 个 mixed-reward group；
+- `training-log.redacted.txt`：去除机器本地标识、ANSI 控制码和无语义行尾空白的完整训练日志，可读回 `training/global_step=1` 和 `actor/grad_norm`；
+- `checkpoint-inventory.json`：`global_step_1` 的 model、optimizer、data、extra 与 HF export 逐文件大小/SHA256；
+- `run-contract.redacted.json`、`resolved-config.redacted.yaml`、`launch.redacted.sh`：可公开核验的精确运行合同、解析配置与入口；
+- `parameter-evidence.json`：tensor 级参数变化证据，并绑定训练前后被评测权重的文件大小与 SHA256；
+- `training-complete.json`：训练完成回执；
+- `result-status.json`：最终状态摘要；
+- `artifact-manifest.json`：原始 run artifact 与公开副本的 SHA256。
+
+公开副本替换机器本地路径、hostname、Pod IP 和平台任务标识，并去除 ANSI 控制码与无语义行尾空白；任务输出、指标、训练遥测、rollout ledger 和 tensor probe 数值保持不变。原始 artifact SHA 与公开副本 SHA 分栏记录，避免把不可获取的原始 hash 当成公开文件 hash。
+
+可在仓库根目录运行 `PYTHONPATH=src python3 scripts/verify_published_results.py`，重新回放全部评测轨迹并核对训练日志、rollout、checkpoint 清单、参数 probe 和 manifest。
+
+## 工程排障记录
+
+- 早期启动脚本把已声明为 `readonly` 的 `CUDA_HOME` 再作为命令前缀变量赋值，Bash 在创建日志重定向前退出。改为提前 `export` 后，同一现有单卡正常完成训练。
+- veRL 导出的 Hugging Face checkpoint 是合法的单文件 `model.safetensors`。早期后处理器错误地只接受 `model.safetensors.index.json`；恢复审计支持两种合法序列化格式，未重跑训练。
+
+## 结论边界
+
+- 这是文字 toy 环境，不包含 Minecraft 视觉、物理、控制延迟或真实游戏状态。
+- 100/100 是冻结 test100 的样本结果，不是面对所有中文意图的总体统计保证。
+- 训练前后都为 100%，因此没有可观测的成功率提升；本轮价值是训练链、参数更新和能力保持的实证。
