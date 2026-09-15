@@ -79,6 +79,7 @@ expected = {
     "torch": "2.11.0+cu130",
     "transformers": "5.5.3",
     "transfer_queue": "0.1.8",
+    "vllm": "0.24.0",
     "device": "NVIDIA B300 SXM6 AC",
 }
 actual = {
@@ -86,6 +87,7 @@ actual = {
     "torch": torch.__version__,
     "transformers": transformers.__version__,
     "transfer_queue": importlib.metadata.version("TransferQueue"),
+    "vllm": importlib.metadata.version("vllm"),
     "device": torch.cuda.get_device_name(0) if torch.cuda.device_count() == 1 else None,
 }
 if actual != expected:
@@ -136,7 +138,7 @@ mkdir -p "$RAY_TMPDIR"
   actor_rollout_ref.actor.fsdp_config.param_offload=false \
   actor_rollout_ref.actor.fsdp_config.optimizer_offload=false \
   actor_rollout_ref.actor.checkpoint.save_contents='[model,optimizer,extra,hf_model]' \
-  actor_rollout_ref.rollout.name=sglang \
+  actor_rollout_ref.rollout.name=vllm \
   actor_rollout_ref.rollout.mode=async \
   actor_rollout_ref.rollout.tensor_model_parallel_size=1 \
   actor_rollout_ref.rollout.data_parallel_size=1 \

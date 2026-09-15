@@ -24,3 +24,6 @@ def test_training_launcher_requires_pinned_transfer_queue():
 
     assert '"transfer_queue": "0.1.8"' in script
     assert 'importlib.metadata.version("TransferQueue")' in script
+    assert '"vllm": "0.24.0"' in script
+    assert "actor_rollout_ref.rollout.name=vllm" in script
+    assert "actor_rollout_ref.rollout.name=sglang" not in script
