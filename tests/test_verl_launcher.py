@@ -34,3 +34,5 @@ def test_training_launcher_requires_pinned_sglang_runtime():
     assert "CUDA_HOME" in script
     assert "site-packages/nvidia/cu13/lib" in script
     assert 'export LD_LIBRARY_PATH="$CUDA_HOME/lib64:$runtime_cuda_lib' in script
+    assert "4ab5bfa4f55f073617795c403a10a1b45310d136691ea5dff0377a58cb991ae1" in script
+    assert "455a4c17c370bf40802a282215f69c71a5d21326ad185375211099bd6fe68730" in script
