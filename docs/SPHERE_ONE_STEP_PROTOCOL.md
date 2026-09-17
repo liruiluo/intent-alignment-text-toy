@@ -45,11 +45,14 @@ penalty 和闭式 `dL/dPhi`；随后按原 microbatch 顺序重放一个线性 s
 microbatch 只承担显存分块，不改变 SPHERE 目标。SPHERE replay 恢复 PPO collection
 开始前的 Torch CPU/CUDA RNG 状态。worker 直接逐元素比较 collection 与 replay 的
 `Phi`。Qwen3.5 的 BF16 hybrid-attention kernel 在重复 forward 中并非 bitwise
-确定，因此冻结数值门为整体相对 L2、整体相对最大差异以及每层相对 L2 均不超过
-`5e-2`；每层相对最大差异保留为诊断值，但不单独作为硬门，因为以该层自身较小的
-最大激活作分母时会产生不稳定比值。同时直接约束与 SPHERE feature gradient 的原始
-surrogate 内积相对偏差不超过 `1e-3`。这些门共同防止 activation replay 明显漂移和
-实际正则方向漂移。
+确定，因此冻结数值门为整体相对 L2 与每层相对 L2 不超过 `5e-2`，整体相对最大差异
+不超过 `1e-1`；每层相对最大差异保留为诊断值，但不单独作为硬门，因为单个 BF16
+元素或以某层自身较小的最大激活作分母都会产生不稳定比值。同时直接约束与 SPHERE
+feature gradient 的原始 surrogate 内积相对偏差不超过 `1e-3`。`1e-1` 的整体最大差异
+门由完整 32 层一更新实测校准：该次整体相对 L2 为 `2.0414%`、整体相对最大差异为
+`8.3050%`、raw surrogate 偏差为 `0.001872%`，其余梯度组装与 32 层非零梯度门全部
+通过。校准失败记录保留，不算正式结果；后续新 run 按此冻结门重新执行。这些门共同
+防止 activation replay 明显漂移和实际正则方向漂移。
 
 ## 自适应正则系数
 

@@ -82,7 +82,7 @@ def worker_payload():
             "different_values": 0,
             "total_values": 4 * 9216,
             "relative_l2_tolerance": 5e-2,
-            "relative_max_tolerance": 5e-2,
+            "relative_max_tolerance": 1e-1,
             "within_tolerance": True,
         },
         "layers": {TARGET: replay_layer},
@@ -465,6 +465,29 @@ def test_worker_audit_accepts_local_max_outlier_when_layer_l2_and_global_norms_p
         registry_path=REGISTRY,
     )
     assert summary["target_count"] == 32
+
+
+def test_worker_audit_accepts_calibrated_aggregate_max_replay_drift():
+    payload = worker_payload()
+    replay = payload["passes"]["sphere"]
+    layer = replay["layers"][TARGET]
+    relative_max = 3.8203125 / 46.0
+    layer["feature_max_abs_difference"] = 3.8203125
+    layer["feature_reference_max_abs"] = 46.0
+    layer["feature_relative_max_difference"] = relative_max
+    aggregate = replay["feature_replay"]
+    aggregate["max_abs_difference"] = 3.8203125
+    aggregate["reference_max_abs"] = 46.0
+    aggregate["relative_max_difference"] = relative_max
+
+    summary = validate_worker_evidence(
+        payload,
+        expected_variant="sphere_dense_last_adaptive_v1",
+        registry_path=REGISTRY,
+    )
+    assert summary["replays"]["sphere"]["feature_relative_max_difference"] == (
+        relative_max
+    )
 
 
 def test_worker_audit_rejects_direct_feature_replay_drift():

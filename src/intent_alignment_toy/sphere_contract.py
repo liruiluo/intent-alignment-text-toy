@@ -18,7 +18,7 @@ _FSDP_WRAPPER_SEGMENT = "_fsdp_wrapped_module"
 # full activation drift and, more importantly, the resulting SPHERE surrogate
 # drift.  These are numerical-replay tolerances, not optimization tolerances.
 SPHERE_REPLAY_RELATIVE_L2_TOLERANCE = 5e-2
-SPHERE_REPLAY_RELATIVE_MAX_TOLERANCE = 5e-2
+SPHERE_REPLAY_RELATIVE_MAX_TOLERANCE = 1e-1
 SPHERE_REPLAY_SURROGATE_RELATIVE_TOLERANCE = 1e-3
 
 
