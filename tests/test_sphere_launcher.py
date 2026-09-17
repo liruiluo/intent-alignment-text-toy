@@ -22,6 +22,10 @@ def test_sphere_launcher_disables_recompute_and_compile_for_hooks():
     assert "ACTOR_GRADIENT_CHECKPOINTING=false" in script
     assert "ACTOR_USE_TORCH_COMPILE=false" in script
     assert "IATOY_SPHERE_EVIDENCE_PATH" in script
+    assert 'IATOY_SPHERE_RUN_ID="$(basename "$RUN_DIR")"' in script
+    assert "IATOY_SPHERE_RUN_NONCE" in script
+    assert "refusing to reuse an existing SPHERE worker evidence target" in script
+    assert 'IATOY_SPHERE_EVIDENCE_PATH="${SPHERE_EVIDENCE_PATH:-' not in script
     assert "intent_alignment_toy.sphere_main" in script
 
 
@@ -36,13 +40,36 @@ def test_sphere_changes_the_actor_worker_not_the_agent_loop():
     assert "generate_sequences" not in worker
 
 
-def test_adaptive_gradient_ratio_has_three_backward_passes_and_one_step():
+def test_adaptive_gradient_ratio_has_two_backward_passes_explicit_sum_and_one_step():
     worker = WORKER.read_text(encoding="utf-8")
 
-    assert worker.count("self.engine.forward_backward_batch(") == 3
+    assert worker.count("self.engine.forward_backward_batch(") == 2
     assert worker.count("self.engine.optimizer_step()") == 1
+    assert "self._assemble_optimizer_gradient(base_gradients)" in worker
+    assert '"full_tensor_residual_l2_norm"' in worker
+    assert '"postcast_values_different_from_ppo"' in worker
+    assert '"explicit_gradient_combination": 1' in worker
+    assert '"combined_forward_backward": 0' in worker
     assert "self.sphere_variant.rho" in worker
     assert '"optimizer_step_exactly_one"' in worker
+
+    train_batch = worker[worker.index("    def train_batch(") :]
+    ppo_backward = train_batch.index("loss_function=self._ppo_collect_loss")
+    clone_ppo = train_batch.index("self._clone_parameter_gradients()")
+    zero_before_sphere = train_batch.index(
+        "self.engine.optimizer_zero_grad()", clone_ppo
+    )
+    sphere_backward = train_batch.index("loss_function=self._sphere_only_loss")
+    assemble = train_batch.index("self._assemble_optimizer_gradient(base_gradients)")
+    optimizer_step = train_batch.index("self.engine.optimizer_step()")
+    assert (
+        ppo_backward
+        < clone_ppo
+        < zero_before_sphere
+        < sphere_backward
+        < assemble
+        < optimizer_step
+    )
 
 
 def test_sphere_uses_one_exact_logical_minibatch_objective():
@@ -67,15 +94,16 @@ def test_replay_surrogate_uses_stop_gradient_value_anchor():
     worker = WORKER.read_text(encoding="utf-8")
 
     assert "surrogate = raw_surrogate - raw_surrogate.detach() + value_anchor" in worker
-    assert 'with_name("worker-evidence.failed.json")' in worker
+    assert '"worker-evidence.failed.json"' in worker
 
 
-def test_all_gradient_passes_restore_the_same_torch_rng_state():
+def test_sphere_replay_restores_the_collection_torch_rng_state():
     worker = WORKER.read_text(encoding="utf-8")
 
     assert "replay_rng_state = self._capture_torch_rng_state()" in worker
-    assert worker.count("self._restore_torch_rng_state(replay_rng_state)") == 2
-    assert '"raw_surrogate_matches_collection"' in worker
+    assert worker.count("self._restore_torch_rng_state(replay_rng_state)") == 1
+    assert '"feature_relative_l2_difference"' in worker
+    assert '"feature_replay_within_tolerance"' in worker
 
 
 def test_gradient_projection_avoids_cuda_linspace_index_rounding():
@@ -102,10 +130,11 @@ def test_sphere_loss_callbacks_match_verl_keyword_contract():
         if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
     }
 
-    for name in ("_sphere_only_loss", "_combined_loss"):
+    for name in ("_sphere_only_loss",):
         assert [argument.arg for argument in functions[name].args.args] == [
             "self",
             "model_output",
             "data",
             "dp_group",
         ]
+    assert "_combined_loss" not in functions

@@ -27,6 +27,8 @@ from verl.utils.tensordict_utils import maybe_fix_3d_position_ids
 from verl.workers.engine_workers import ActorRolloutRefWorker, TrainingWorker
 
 from intent_alignment_toy.sphere_contract import (
+    SPHERE_REPLAY_RELATIVE_L2_TOLERANCE,
+    SPHERE_REPLAY_RELATIVE_MAX_TOLERANCE,
     SphereVariant,
     build_packed_response_predictor_mask,
     load_sphere_variant,
@@ -34,7 +36,7 @@ from intent_alignment_toy.sphere_contract import (
     sphere_penalty_from_gram_stats,
 )
 
-_EVIDENCE_SCHEMA = "intent_alignment_dense_sphere_worker_evidence_v2"
+_EVIDENCE_SCHEMA = "intent_alignment_dense_sphere_worker_evidence_v4"
 
 
 def _utc_now() -> str:
@@ -120,6 +122,24 @@ class SphereTrainingWorker(TrainingWorker):
         )
         self.sphere_registry_path = registry_path
         self.sphere_evidence_path = Path(os.environ["IATOY_SPHERE_EVIDENCE_PATH"])
+        self.sphere_run_id = os.environ["IATOY_SPHERE_RUN_ID"]
+        self.sphere_run_nonce = os.environ["IATOY_SPHERE_RUN_NONCE"]
+        expected_evidence_path = (
+            self.sphere_evidence_path.parent.parent / "sphere" / "worker-evidence.json"
+        )
+        if self.sphere_evidence_path != expected_evidence_path:
+            raise RuntimeError("SPHERE worker evidence path is not canonical")
+        if self.sphere_evidence_path.parent.parent.name != self.sphere_run_id:
+            raise RuntimeError("SPHERE worker run id does not match the evidence path")
+        if len(self.sphere_run_nonce) != 64 or any(
+            character not in "0123456789abcdef" for character in self.sphere_run_nonce
+        ):
+            raise RuntimeError("SPHERE worker run nonce is malformed")
+        failed_evidence_path = self.sphere_evidence_path.with_name(
+            "worker-evidence.failed.json"
+        )
+        if self.sphere_evidence_path.exists() or failed_evidence_path.exists():
+            raise RuntimeError("SPHERE worker refuses a stale evidence target")
         self._hook_handles: list[Any] = []
         self._target_modules: dict[str, torch.nn.Module] = {}
         self._captures: dict[str, torch.Tensor] = {}
@@ -191,7 +211,7 @@ class SphereTrainingWorker(TrainingWorker):
             )
 
     def _begin_capture_phase(self, phase: str) -> None:
-        if phase not in {"collect", "sphere", "combined"}:
+        if phase not in {"collect", "sphere"}:
             raise ValueError(f"unsupported SPHERE capture phase: {phase}")
         if self._capture_enabled or self._captures:
             raise RuntimeError("stale SPHERE captures exist at phase boundary")
@@ -217,6 +237,12 @@ class SphereTrainingWorker(TrainingWorker):
                     "token_rows": 0,
                     "feature_dim": None,
                     "surrogate_sum": None,
+                    "feature_difference_l2_squared": None,
+                    "feature_reference_l2_squared": None,
+                    "feature_max_abs_difference": 0.0,
+                    "feature_reference_max_abs": 0.0,
+                    "feature_different_values": 0,
+                    "feature_total_values": 0,
                 }
                 for name in self._target_modules
             },
@@ -360,7 +386,7 @@ class SphereTrainingWorker(TrainingWorker):
 
     @staticmethod
     def _capture_torch_rng_state() -> tuple[torch.Tensor, list[torch.Tensor]]:
-        """Snapshot every Torch RNG consumed by the three training passes."""
+        """Snapshot every Torch RNG consumed by the two training passes."""
         return (
             torch.get_rng_state().clone(),
             [state.clone() for state in torch.cuda.get_rng_state_all()],
@@ -370,7 +396,7 @@ class SphereTrainingWorker(TrainingWorker):
     def _restore_torch_rng_state(
         state: tuple[torch.Tensor, list[torch.Tensor]],
     ) -> None:
-        """Replay one model pass without advancing training RNG three times."""
+        """Replay the model pass with the collection pass's Torch RNG state."""
         cpu_state, cuda_states = state
         torch.set_rng_state(cpu_state)
         torch.cuda.set_rng_state_all(cuda_states)
@@ -460,7 +486,6 @@ class SphereTrainingWorker(TrainingWorker):
                 "feature_gradient_l2_norm": feature_gradient_norm.detach(),
                 "surrogate_dot": surrogate_dot.detach(),
             }
-            self._logical_feature_chunks[name] = []
             del logical_features, feature_gradient
 
         total_penalty = torch.stack(penalties).sum()
@@ -476,7 +501,6 @@ class SphereTrainingWorker(TrainingWorker):
                 "logical-minibatch SPHERE surrogate correction is non-finite"
             )
 
-        self._logical_feature_chunks = {}
         self._logical_surrogate_correction = correction
         self._logical_objective = {
             "microbatches": len(self._logical_microbatch_identities),
@@ -489,7 +513,7 @@ class SphereTrainingWorker(TrainingWorker):
 
     def _consume_logical_surrogate(self, data: TensorDict) -> torch.Tensor:
         phase = self._capture_phase
-        if phase not in {"sphere", "combined"}:
+        if phase != "sphere":
             raise RuntimeError("SPHERE surrogate ran outside a replay phase")
         if (
             self._logical_objective is None
@@ -512,10 +536,16 @@ class SphereTrainingWorker(TrainingWorker):
         terms: list[torch.Tensor] = []
         for name, selected in selected_by_layer.items():
             gradient = self._logical_gradient_chunks[name][index]
+            reference = self._logical_feature_chunks[name][index]
             if selected.shape != gradient.shape:
                 raise RuntimeError(
                     f"SPHERE {phase} feature/gradient shape drifted at {name}: "
                     f"{tuple(selected.shape)} != {tuple(gradient.shape)}"
+                )
+            if selected.shape != reference.shape:
+                raise RuntimeError(
+                    f"SPHERE {phase} feature/reference shape drifted at {name}: "
+                    f"{tuple(selected.shape)} != {tuple(reference.shape)}"
                 )
             term = torch.sum(selected.float() * gradient.float())
             terms.append(term)
@@ -526,6 +556,30 @@ class SphereTrainingWorker(TrainingWorker):
             layer_stats["surrogate_sum"] = self._accumulate_scalar(
                 layer_stats["surrogate_sum"], term
             )
+            selected_detached = selected.detach()
+            reference_float = reference.float()
+            difference = selected_detached.float() - reference_float
+            difference_l2_squared = torch.sum(difference * difference)
+            reference_l2_squared = torch.sum(reference_float * reference_float)
+            layer_stats["feature_difference_l2_squared"] = self._accumulate_scalar(
+                layer_stats["feature_difference_l2_squared"], difference_l2_squared
+            )
+            layer_stats["feature_reference_l2_squared"] = self._accumulate_scalar(
+                layer_stats["feature_reference_l2_squared"], reference_l2_squared
+            )
+            layer_stats["feature_max_abs_difference"] = max(
+                layer_stats["feature_max_abs_difference"],
+                float(torch.max(torch.abs(difference)).item()),
+            )
+            layer_stats["feature_reference_max_abs"] = max(
+                layer_stats["feature_reference_max_abs"],
+                float(torch.max(torch.abs(reference_float)).item()),
+            )
+            layer_stats["feature_different_values"] += int(
+                torch.count_nonzero(selected_detached != reference).item()
+            )
+            layer_stats["feature_total_values"] += selected.numel()
+            del difference, reference_float
 
         raw_surrogate = torch.stack(terms).sum()
         # The linear surrogate's value is arbitrary; only its gradient carries
@@ -582,20 +636,6 @@ class SphereTrainingWorker(TrainingWorker):
         }
         return anchored_surrogate, metrics
 
-    def _combined_loss(self, model_output, data: TensorDict, dp_group=None):
-        base_loss, metrics = self.loss_fn(
-            model_output=model_output, data=data, dp_group=dp_group
-        )
-        surrogate = self._consume_logical_surrogate(data)
-        total_loss = base_loss + self._current_lambda * surrogate
-        metrics["actor/sphere_penalty"] = Metric(
-            value=surrogate, aggregation=AggregationType.SUM
-        )
-        metrics["actor/sphere_lambda"] = Metric(
-            value=self._current_lambda, aggregation=AggregationType.MEAN
-        )
-        return total_loss, metrics
-
     def _gradient_stats(self) -> dict[str, float | int]:
         norm_squared = torch.zeros((), dtype=torch.float32, device=self.device_name)
         projection = torch.zeros((), dtype=torch.float32, device=self.device_name)
@@ -645,6 +685,234 @@ class SphereTrainingWorker(TrainingWorker):
             "projection": projection_value,
             "tensors_with_grad": tensors_with_grad,
             "projection_sample_count": sampled_values,
+        }
+
+    def _clone_parameter_gradients(self) -> list[torch.Tensor | None]:
+        gradients: list[torch.Tensor | None] = []
+        for _name, parameter in self.engine.module.named_parameters():
+            gradient = parameter.grad
+            gradients.append(None if gradient is None else gradient.detach().clone())
+        if not any(gradient is not None for gradient in gradients):
+            raise RuntimeError("PPO gradient snapshot is empty")
+        return gradients
+
+    @staticmethod
+    def _gradient_representation(tensor: torch.Tensor) -> tuple[str, str]:
+        representation = f"{type(tensor).__module__}.{type(tensor).__name__}"
+        placements = getattr(tensor, "placements", None)
+        placement = (
+            "regular_tensor"
+            if placements is None
+            else ",".join(str(item) for item in placements)
+        )
+        return representation, placement
+
+    def _assemble_optimizer_gradient(
+        self,
+        base_gradients: list[torch.Tensor | None],
+    ) -> dict[str, Any]:
+        parameters = list(self.engine.module.named_parameters())
+        if len(parameters) != len(base_gradients):
+            raise RuntimeError("parameter inventory drifted during gradient assembly")
+
+        scalar_names = (
+            "ppo_l2_squared",
+            "sphere_l2_squared",
+            "ppo_sphere_dot",
+            "precast_expected_l2_squared",
+            "postcast_expected_l2_squared",
+            "actual_l2_squared",
+            "assembly_residual_l2_squared",
+            "postcast_delta_from_ppo_l2_squared",
+            "postcast_quantization_error_l2_squared",
+        )
+        scalars = {
+            name: torch.zeros((), dtype=torch.float32, device=self.device_name)
+            for name in scalar_names
+        }
+        residual_max = torch.zeros((), dtype=torch.float32, device=self.device_name)
+        delta_from_ppo_max = torch.zeros(
+            (), dtype=torch.float32, device=self.device_name
+        )
+        quantization_error_max = torch.zeros(
+            (), dtype=torch.float32, device=self.device_name
+        )
+        combined_tensors = 0
+        finite = True
+        element_count = 0
+        changed_from_ppo_values = 0
+        ppo_dtype_counts: dict[str, int] = {}
+        sphere_dtype_counts: dict[str, int] = {}
+        destination_dtype_counts: dict[str, int] = {}
+        ppo_representation_counts: dict[str, int] = {}
+        sphere_representation_counts: dict[str, int] = {}
+        destination_representation_counts: dict[str, int] = {}
+        ppo_placement_counts: dict[str, int] = {}
+        sphere_placement_counts: dict[str, int] = {}
+        destination_placement_counts: dict[str, int] = {}
+
+        def increment(counts: dict[str, int], key: str) -> None:
+            counts[key] = counts.get(key, 0) + 1
+
+        for (name, parameter), base_gradient in zip(
+            parameters, base_gradients, strict=True
+        ):
+            sphere_gradient = parameter.grad
+            if (base_gradient is None) != (sphere_gradient is None):
+                raise RuntimeError(
+                    f"PPO/SPHERE gradient coverage drifted at parameter {name}"
+                )
+            if sphere_gradient is None:
+                continue
+
+            base_local = _local_tensor(base_gradient.detach())
+            sphere_local = _local_tensor(sphere_gradient.detach())
+            destination_local = _local_tensor(parameter.grad)
+            if (
+                base_local.shape != sphere_local.shape
+                or base_local.shape != destination_local.shape
+            ):
+                raise RuntimeError(
+                    f"PPO/SPHERE/destination gradient shape drifted at {name}"
+                )
+
+            for counts, tensor in (
+                (ppo_dtype_counts, base_local),
+                (sphere_dtype_counts, sphere_local),
+                (destination_dtype_counts, destination_local),
+            ):
+                increment(counts, str(tensor.dtype))
+            for representation_counts, placement_counts, tensor in (
+                (ppo_representation_counts, ppo_placement_counts, base_gradient),
+                (
+                    sphere_representation_counts,
+                    sphere_placement_counts,
+                    sphere_gradient,
+                ),
+                (
+                    destination_representation_counts,
+                    destination_placement_counts,
+                    parameter.grad,
+                ),
+            ):
+                representation, placement = self._gradient_representation(tensor)
+                increment(representation_counts, representation)
+                increment(placement_counts, placement)
+
+            base_float = base_local.float()
+            sphere_float = sphere_local.float()
+            expected_precast = base_float + self._current_lambda * sphere_float
+            expected_postcast = expected_precast.to(dtype=destination_local.dtype)
+
+            scalars["ppo_l2_squared"] += torch.sum(base_float * base_float)
+            scalars["sphere_l2_squared"] += torch.sum(sphere_float * sphere_float)
+            scalars["ppo_sphere_dot"] += torch.sum(base_float * sphere_float)
+            scalars["precast_expected_l2_squared"] += torch.sum(
+                expected_precast * expected_precast
+            )
+            expected_postcast_float = expected_postcast.float()
+            scalars["postcast_expected_l2_squared"] += torch.sum(
+                expected_postcast_float * expected_postcast_float
+            )
+
+            # This is the actual write consumed by optimizer_step().  The
+            # post-write full-tensor residual below independently verifies every
+            # local element against the post-cast expected PPO + lambda*SPHERE sum.
+            destination_local.copy_(expected_postcast)
+            actual_float = _local_tensor(parameter.grad.detach()).float()
+            residual = actual_float - expected_postcast_float
+            base_postcast_float = base_local.to(dtype=destination_local.dtype).float()
+            delta_from_ppo = actual_float - base_postcast_float
+            quantization_error = expected_postcast_float - expected_precast
+
+            scalars["actual_l2_squared"] += torch.sum(actual_float * actual_float)
+            scalars["assembly_residual_l2_squared"] += torch.sum(residual * residual)
+            scalars["postcast_delta_from_ppo_l2_squared"] += torch.sum(
+                delta_from_ppo * delta_from_ppo
+            )
+            scalars["postcast_quantization_error_l2_squared"] += torch.sum(
+                quantization_error * quantization_error
+            )
+            residual_max = torch.maximum(residual_max, torch.max(torch.abs(residual)))
+            delta_from_ppo_max = torch.maximum(
+                delta_from_ppo_max, torch.max(torch.abs(delta_from_ppo))
+            )
+            quantization_error_max = torch.maximum(
+                quantization_error_max, torch.max(torch.abs(quantization_error))
+            )
+            changed_from_ppo_values += int(
+                torch.count_nonzero(actual_float != base_postcast_float).item()
+            )
+            element_count += actual_float.numel()
+            finite = finite and bool(torch.isfinite(actual_float).all().item())
+            combined_tensors += 1
+            del (
+                actual_float,
+                base_float,
+                base_postcast_float,
+                delta_from_ppo,
+                expected_postcast,
+                expected_postcast_float,
+                expected_precast,
+                quantization_error,
+                residual,
+                sphere_float,
+            )
+
+        scalar_values = {
+            name: float(torch.sqrt(torch.clamp(value, min=0)).item())
+            for name, value in scalars.items()
+            if name != "ppo_sphere_dot"
+        }
+        ppo_sphere_dot = float(scalars["ppo_sphere_dot"].item())
+        residual_l2 = scalar_values["assembly_residual_l2_squared"]
+        residual_max_value = float(residual_max.item())
+        delta_l2 = scalar_values["postcast_delta_from_ppo_l2_squared"]
+        delta_max = float(delta_from_ppo_max.item())
+        if (
+            combined_tensors <= 0
+            or element_count <= 0
+            or not finite
+            or residual_l2 != 0.0
+            or residual_max_value != 0.0
+            or changed_from_ppo_values <= 0
+            or delta_l2 <= 0.0
+            or delta_max <= 0.0
+        ):
+            raise RuntimeError(
+                "explicit PPO+SPHERE optimizer gradient failed full-tensor assembly "
+                "or post-cast contribution checks"
+            )
+        return {
+            "mode": "explicit_ppo_plus_lambda_sphere",
+            "parameter_tensors": combined_tensors,
+            "element_count": element_count,
+            "finite": finite,
+            "accumulation_dtype": "torch.float32",
+            "ppo_source_dtype_counts": ppo_dtype_counts,
+            "sphere_source_dtype_counts": sphere_dtype_counts,
+            "destination_dtype_counts": destination_dtype_counts,
+            "ppo_representation_counts": ppo_representation_counts,
+            "sphere_representation_counts": sphere_representation_counts,
+            "destination_representation_counts": destination_representation_counts,
+            "ppo_placement_counts": ppo_placement_counts,
+            "sphere_placement_counts": sphere_placement_counts,
+            "destination_placement_counts": destination_placement_counts,
+            "ppo_l2_norm": scalar_values["ppo_l2_squared"],
+            "sphere_l2_norm": scalar_values["sphere_l2_squared"],
+            "ppo_sphere_dot_product": ppo_sphere_dot,
+            "precast_expected_l2_norm": scalar_values["precast_expected_l2_squared"],
+            "postcast_expected_l2_norm": scalar_values["postcast_expected_l2_squared"],
+            "actual_l2_norm": scalar_values["actual_l2_squared"],
+            "full_tensor_residual_l2_norm": residual_l2,
+            "full_tensor_residual_max_abs": residual_max_value,
+            "postcast_delta_from_ppo_l2_norm": delta_l2,
+            "postcast_delta_from_ppo_max_abs": delta_max,
+            "postcast_values_different_from_ppo": changed_from_ppo_values,
+            "postcast_quantization_error_l2_norm": scalar_values[
+                "postcast_quantization_error_l2_squared"
+            ],
+            "postcast_quantization_error_max_abs": float(quantization_error_max.item()),
         }
 
     def _activation_gradient_evidence(self) -> dict[str, dict[str, Any]]:
@@ -715,33 +983,102 @@ class SphereTrainingWorker(TrainingWorker):
         )
         raw_surrogate = float(stats["raw_surrogate_sum"].item())
         surrogate = float(stats["surrogate_sum"].item())
+        layer_payload: dict[str, dict[str, Any]] = {}
+        difference_l2_squared = 0.0
+        reference_l2_squared = 0.0
+        max_abs_difference = 0.0
+        reference_max_abs = 0.0
+        different_values = 0
+        total_values = 0
+        for name, layer in stats["layers"].items():
+            layer_difference_l2_squared = float(
+                layer["feature_difference_l2_squared"].item()
+            )
+            layer_reference_l2_squared = float(
+                layer["feature_reference_l2_squared"].item()
+            )
+            layer_difference_l2 = math.sqrt(max(layer_difference_l2_squared, 0.0))
+            layer_reference_l2 = math.sqrt(max(layer_reference_l2_squared, 0.0))
+            layer_relative_l2 = layer_difference_l2 / max(layer_reference_l2, 1e-12)
+            layer_max_abs_difference = float(layer["feature_max_abs_difference"])
+            layer_reference_max_abs = float(layer["feature_reference_max_abs"])
+            layer_relative_max = layer_max_abs_difference / max(
+                layer_reference_max_abs, 1e-12
+            )
+            layer_within_tolerance = (
+                math.isfinite(layer_relative_l2)
+                and math.isfinite(layer_relative_max)
+                and layer_relative_l2 <= SPHERE_REPLAY_RELATIVE_L2_TOLERANCE
+                and layer_relative_max <= SPHERE_REPLAY_RELATIVE_MAX_TOLERANCE
+            )
+            layer_payload[name] = {
+                "calls": int(layer["calls"]),
+                "token_rows": int(layer["token_rows"]),
+                "feature_dim": int(layer["feature_dim"]),
+                "surrogate_sum_before_global_correction": float(
+                    layer["surrogate_sum"].item()
+                ),
+                "feature_difference_l2_norm": layer_difference_l2,
+                "feature_reference_l2_norm": layer_reference_l2,
+                "feature_relative_l2_difference": layer_relative_l2,
+                "feature_max_abs_difference": layer_max_abs_difference,
+                "feature_reference_max_abs": layer_reference_max_abs,
+                "feature_relative_max_difference": layer_relative_max,
+                "feature_different_values": int(layer["feature_different_values"]),
+                "feature_total_values": int(layer["feature_total_values"]),
+                "feature_replay_within_tolerance": layer_within_tolerance,
+            }
+            difference_l2_squared += layer_difference_l2_squared
+            reference_l2_squared += layer_reference_l2_squared
+            max_abs_difference = max(max_abs_difference, layer_max_abs_difference)
+            reference_max_abs = max(reference_max_abs, layer_reference_max_abs)
+            different_values += int(layer["feature_different_values"])
+            total_values += int(layer["feature_total_values"])
+
+        difference_l2 = math.sqrt(max(difference_l2_squared, 0.0))
+        reference_l2 = math.sqrt(max(reference_l2_squared, 0.0))
+        relative_l2 = difference_l2 / max(reference_l2, 1e-12)
+        relative_max = max_abs_difference / max(reference_max_abs, 1e-12)
+        features_within_tolerance = (
+            math.isfinite(relative_l2)
+            and math.isfinite(relative_max)
+            and relative_l2 <= SPHERE_REPLAY_RELATIVE_L2_TOLERANCE
+            and relative_max <= SPHERE_REPLAY_RELATIVE_MAX_TOLERANCE
+            and all(
+                layer["feature_replay_within_tolerance"]
+                for layer in layer_payload.values()
+            )
+        )
+        raw_difference = raw_surrogate - collection_surrogate
+        raw_relative_difference = abs(raw_difference) / max(
+            abs(collection_surrogate), 1.0
+        )
         return {
             "microbatches": int(stats["microbatches"]),
             "identity_matches": int(stats["identity_matches"]),
             "penalty_sum": penalty,
             "collection_surrogate_dot_sum": collection_surrogate,
             "raw_surrogate_sum": raw_surrogate,
-            "raw_surrogate_matches_collection": math.isclose(
-                raw_surrogate,
-                collection_surrogate,
-                rel_tol=1e-6,
-                abs_tol=1e-2,
-            ),
+            "raw_surrogate_difference": raw_difference,
+            "raw_surrogate_relative_difference": raw_relative_difference,
             "surrogate_sum": surrogate,
             "surrogate_matches_penalty": math.isclose(
                 surrogate, penalty, rel_tol=5e-4, abs_tol=1e-2
             ),
-            "layers": {
-                name: {
-                    "calls": int(layer["calls"]),
-                    "token_rows": int(layer["token_rows"]),
-                    "feature_dim": int(layer["feature_dim"]),
-                    "surrogate_sum_before_global_correction": float(
-                        layer["surrogate_sum"].item()
-                    ),
-                }
-                for name, layer in stats["layers"].items()
+            "feature_replay": {
+                "difference_l2_norm": difference_l2,
+                "reference_l2_norm": reference_l2,
+                "relative_l2_difference": relative_l2,
+                "max_abs_difference": max_abs_difference,
+                "reference_max_abs": reference_max_abs,
+                "relative_max_difference": relative_max,
+                "different_values": different_values,
+                "total_values": total_values,
+                "relative_l2_tolerance": SPHERE_REPLAY_RELATIVE_L2_TOLERANCE,
+                "relative_max_tolerance": SPHERE_REPLAY_RELATIVE_MAX_TOLERANCE,
+                "within_tolerance": features_within_tolerance,
             },
+            "layers": layer_payload,
         }
 
     def _write_evidence(
@@ -750,6 +1087,7 @@ class SphereTrainingWorker(TrainingWorker):
         base_gradient: dict[str, Any],
         sphere_gradient: dict[str, Any],
         final_gradient: dict[str, Any],
+        gradient_assembly: dict[str, Any],
         activation_gradients: dict[str, Any],
         optimizer_grad_norm: float,
     ) -> None:
@@ -777,13 +1115,17 @@ class SphereTrainingWorker(TrainingWorker):
         registry_sha256 = _sha256(self.sphere_registry_path)
         logical = self._serialize_logical_objective(self._logical_objective)
         sphere_replay = self._serialize_replay_stats(self._phase_stats["sphere"])
-        combined_replay = self._serialize_replay_stats(self._phase_stats["combined"])
         optimizer_grad_norm = float(optimizer_grad_norm)
 
         payload = {
             "schema": _EVIDENCE_SCHEMA,
             "created_at_utc": _utc_now(),
             "variant": self.sphere_variant.name,
+            "run": {
+                "id": self.sphere_run_id,
+                "nonce": self.sphere_run_nonce,
+                "evidence_path": str(self.sphere_evidence_path),
+            },
             "contract": {
                 "layer_mode": self.sphere_variant.layer_mode,
                 "target_scale_mode": self.sphere_variant.target_scale_mode,
@@ -798,6 +1140,7 @@ class SphereTrainingWorker(TrainingWorker):
                 "logical_minibatch_exact_penalty": True,
                 "logical_minibatch_surrogate_replay": True,
                 "logical_minibatch_gradient_ratio": True,
+                "optimizer_gradient_assembly": "explicit_ppo_plus_lambda_sphere",
                 "gradient_checkpointing_required_off": True,
                 "torch_compile_required_off": True,
             },
@@ -819,28 +1162,29 @@ class SphereTrainingWorker(TrainingWorker):
             "passes": {
                 "ppo_only_forward_backward": 1,
                 "sphere_only_forward_backward": 1,
-                "combined_forward_backward": 1,
+                "combined_forward_backward": 0,
+                "explicit_gradient_combination": 1,
                 "optimizer_steps": self._optimizer_steps,
                 "collection": self._serialize_collection_stats(
                     self._phase_stats["collect"]
                 ),
                 "logical_objective": logical,
                 "sphere": sphere_replay,
-                "combined": combined_replay,
             },
+            "gradient_assembly": gradient_assembly,
             "gradients": {
                 "ppo": base_gradient,
                 "sphere": sphere_gradient,
-                "combined": final_gradient,
+                "optimizer_assembled": final_gradient,
                 "lambda": self._current_lambda,
                 "expected_lambda": expected_lambda,
                 "regularizer_contribution_l2_norm": contribution_norm,
                 "regularizer_to_ppo_norm_ratio": ratio,
                 "expected_regularizer_to_ppo_norm_ratio": expected_ratio,
-                "predicted_combined_projection": predicted_projection,
-                "actual_combined_projection": actual_projection,
-                "combined_projection_residual": projection_residual,
-                "combined_projection_tolerance": projection_tolerance,
+                "predicted_optimizer_projection": predicted_projection,
+                "actual_optimizer_projection": actual_projection,
+                "optimizer_projection_residual": projection_residual,
+                "optimizer_projection_tolerance": projection_tolerance,
                 "optimizer_reported_preclip_grad_norm": optimizer_grad_norm,
                 "target_activation_gradients": activation_gradients,
             },
@@ -868,21 +1212,35 @@ class SphereTrainingWorker(TrainingWorker):
                 "sphere_replay_matches_logical_penalty": sphere_replay[
                     "surrogate_matches_penalty"
                 ],
-                "combined_replay_matches_logical_penalty": combined_replay[
-                    "surrogate_matches_penalty"
-                ],
-                "sphere_replay_features_match_collection": sphere_replay[
-                    "raw_surrogate_matches_collection"
-                ],
-                "combined_replay_features_match_collection": combined_replay[
-                    "raw_surrogate_matches_collection"
-                ],
+                "sphere_replay_features_within_tolerance": sphere_replay[
+                    "feature_replay"
+                ]["within_tolerance"],
                 "all_replay_microbatch_identities_match": (
-                    sphere_replay["identity_matches"]
-                    == combined_replay["identity_matches"]
-                    == logical["microbatches"]
+                    sphere_replay["identity_matches"] == logical["microbatches"]
                 ),
-                "combined_projection_matches_sum": (
+                "optimizer_gradient_assembly_finite": (
+                    gradient_assembly["mode"] == "explicit_ppo_plus_lambda_sphere"
+                    and gradient_assembly["finite"] is True
+                    and gradient_assembly["parameter_tensors"]
+                    == final_gradient["tensors_with_grad"]
+                    and gradient_assembly["element_count"] > 0
+                ),
+                "full_tensor_assembly_exact": (
+                    gradient_assembly["full_tensor_residual_l2_norm"] == 0.0
+                    and gradient_assembly["full_tensor_residual_max_abs"] == 0.0
+                    and math.isclose(
+                        gradient_assembly["actual_l2_norm"],
+                        final_gradient["l2_norm"],
+                        rel_tol=1e-5,
+                        abs_tol=1e-7,
+                    )
+                ),
+                "postcast_regularizer_contribution_nonzero": (
+                    gradient_assembly["postcast_values_different_from_ppo"] > 0
+                    and gradient_assembly["postcast_delta_from_ppo_l2_norm"] > 0.0
+                    and gradient_assembly["postcast_delta_from_ppo_max_abs"] > 0.0
+                ),
+                "optimizer_projection_matches_explicit_sum": (
                     math.isfinite(projection_residual)
                     and abs(projection_residual) <= projection_tolerance
                 ),
@@ -898,21 +1256,23 @@ class SphereTrainingWorker(TrainingWorker):
         passed = all(payload["checks"].values())
         payload["status"] = "passed" if passed else "failed"
         self.sphere_evidence_path.parent.mkdir(parents=True, exist_ok=True)
-        output_path = (
-            self.sphere_evidence_path
-            if passed
-            else self.sphere_evidence_path.with_name("worker-evidence.failed.json")
+        failed_evidence_path = self.sphere_evidence_path.with_name(
+            "worker-evidence.failed.json"
         )
+        if self.sphere_evidence_path.exists() or failed_evidence_path.exists():
+            raise RuntimeError("SPHERE worker evidence target became stale")
+        output_path = self.sphere_evidence_path if passed else failed_evidence_path
         temporary = output_path.with_name(f".{output_path.name}.tmp.{os.getpid()}")
         temporary.write_text(
             json.dumps(payload, ensure_ascii=False, indent=2) + "\n",
             encoding="utf-8",
         )
         os.replace(temporary, output_path)
-        if not passed:
-            raise RuntimeError(f"SPHERE evidence gate failed: {payload['checks']}")
+        self._logical_feature_chunks = {}
         self._logical_gradient_chunks = {}
         self._logical_surrogate_correction = None
+        if not passed:
+            raise RuntimeError(f"SPHERE evidence gate failed: {payload['checks']}")
 
     def _add_global_metric(self, output: dict, name: str, value: float) -> None:
         output["metrics"][name] = [
@@ -955,13 +1315,18 @@ class SphereTrainingWorker(TrainingWorker):
             self.engine.optimizer_zero_grad()
             self._begin_capture_phase("collect")
             replay_rng_state = self._capture_torch_rng_state()
-            self.engine.forward_backward_batch(
+            output = self.engine.forward_backward_batch(
                 data, loss_function=self._ppo_collect_loss, forward_only=False
             )
+            if self.engine.is_mp_src_rank_with_outputs():
+                # Keep the PPO metrics for the trainer, but do not retain a
+                # first-pass model output across the SPHERE replay.
+                output.pop("model_output")
             self._end_capture_phase()
             base_gradient = self._gradient_stats()
             if base_gradient["l2_norm"] <= 0:
                 raise RuntimeError("PPO gradient norm is zero")
+            base_gradients = self._clone_parameter_gradients()
             self._finalize_logical_objective()
 
             self.engine.optimizer_zero_grad()
@@ -986,13 +1351,8 @@ class SphereTrainingWorker(TrainingWorker):
                     "SPHERE adaptive coefficient is non-finite/non-positive"
                 )
 
-            self.engine.optimizer_zero_grad()
-            self._begin_capture_phase("combined")
-            self._restore_torch_rng_state(replay_rng_state)
-            output = self.engine.forward_backward_batch(
-                data, loss_function=self._combined_loss, forward_only=False
-            )
-            self._end_capture_phase()
+            gradient_assembly = self._assemble_optimizer_gradient(base_gradients)
+            del base_gradients
             final_gradient = self._gradient_stats()
             optimizer_grad_norm = self.engine.optimizer_step()
             self._optimizer_steps += 1
@@ -1000,7 +1360,6 @@ class SphereTrainingWorker(TrainingWorker):
         update_lr_scheduler = tu.get(data, key="update_lr_scheduler", default=False)
         lr = self.engine.lr_scheduler_step() if update_lr_scheduler else None
         if self.engine.is_mp_src_rank_with_outputs():
-            output.pop("model_output")
             output["metrics"]["grad_norm"] = optimizer_grad_norm
             if lr is not None:
                 output["metrics"]["lr"] = lr
@@ -1009,6 +1368,11 @@ class SphereTrainingWorker(TrainingWorker):
             )
             self._add_global_metric(
                 output, "actor/sphere_grad_norm", sphere_gradient["l2_norm"]
+            )
+            self._add_global_metric(
+                output,
+                "actor/sphere_penalty",
+                float(self._logical_objective["penalty_sum"].item()),
             )
             self._add_global_metric(output, "actor/sphere_lambda", self._current_lambda)
             self._add_global_metric(
@@ -1029,6 +1393,7 @@ class SphereTrainingWorker(TrainingWorker):
                 base_gradient=base_gradient,
                 sphere_gradient=sphere_gradient,
                 final_gradient=final_gradient,
+                gradient_assembly=gradient_assembly,
                 activation_gradients=activation_gradients,
                 optimizer_grad_norm=optimizer_grad_norm,
             )

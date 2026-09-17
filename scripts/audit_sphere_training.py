@@ -21,15 +21,19 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-from intent_alignment_toy.sphere_contract import load_sphere_variant
+from intent_alignment_toy.sphere_contract import (
+    SPHERE_REPLAY_RELATIVE_L2_TOLERANCE,
+    SPHERE_REPLAY_RELATIVE_MAX_TOLERANCE,
+    load_sphere_variant,
+)
 
-WORKER_SCHEMA = "intent_alignment_dense_sphere_worker_evidence_v2"
-TRAINING_SCHEMA = "intent_alignment_dense_sphere_training_evidence_v2"
+WORKER_SCHEMA = "intent_alignment_dense_sphere_worker_evidence_v4"
+TRAINING_SCHEMA = "intent_alignment_dense_sphere_training_evidence_v3"
 CHECKPOINT_SCHEMA = "intent_alignment_checkpoint_inventory_v1"
-COMPLETION_SCHEMA = "intent_alignment_dense_sphere_training_complete_v2"
-RESULT_SCHEMA = "intent_alignment_dense_sphere_result_v2"
+COMPLETION_SCHEMA = "intent_alignment_dense_sphere_training_complete_v3"
+RESULT_SCHEMA = "intent_alignment_dense_sphere_result_v3"
 PARAMETER_SCHEMA = "intent_alignment_semantic_parameter_evidence_v2"
-RUN_CONTRACT_SCHEMA = "intent_alignment_dense_sphere_run_contract_v2"
+RUN_CONTRACT_SCHEMA = "intent_alignment_dense_sphere_run_contract_v3"
 EXPECTED_VERL_COMMIT = "483b8a009ba3a97563edee3a19887e4862b8094a"
 EXPECTED_TEST_JSONL_SHA256 = (
     "b2f7560c4466949136bec09bd2e8532a27def45696c5eeed3b4fcc99de2c1675"
@@ -77,6 +81,13 @@ def _finite_positive(value: Any, label: str) -> float:
     return number
 
 
+def _finite_nonnegative(value: Any, label: str) -> float:
+    number = _finite(value, label)
+    if number < 0:
+        raise ValueError(f"{label} must be non-negative, got {value!r}")
+    return number
+
+
 def _require_close(
     actual: Any,
     expected: Any,
@@ -120,7 +131,13 @@ def _validate_gradient_row(row: dict[str, Any], label: str) -> tuple[float, floa
 
 
 def validate_worker_evidence(
-    payload: dict[str, Any], *, expected_variant: str, registry_path: Path
+    payload: dict[str, Any],
+    *,
+    expected_variant: str,
+    registry_path: Path,
+    expected_run_id: str | None = None,
+    expected_run_nonce: str | None = None,
+    expected_evidence_path: Path | None = None,
 ) -> dict[str, Any]:
     """Validate worker evidence and recompute all SPHERE coefficient checks."""
     variant = load_sphere_variant(registry_path, expected_variant)
@@ -130,6 +147,28 @@ def validate_worker_evidence(
         raise ValueError("SPHERE worker evidence is not a passed artifact")
     if payload.get("variant") != expected_variant:
         raise ValueError("SPHERE worker evidence variant drifted")
+    run_identity = payload.get("run", {})
+    run_id = run_identity.get("id")
+    run_nonce = run_identity.get("nonce")
+    evidence_path = run_identity.get("evidence_path")
+    if (
+        not isinstance(run_id, str)
+        or not run_id
+        or not isinstance(run_nonce, str)
+        or not re.fullmatch(r"[0-9a-f]{64}", run_nonce)
+        or not isinstance(evidence_path, str)
+        or not evidence_path.endswith("/sphere/worker-evidence.json")
+    ):
+        raise ValueError("SPHERE worker run identity is malformed")
+    if expected_run_id is not None and run_id != expected_run_id:
+        raise ValueError("SPHERE worker run id drifted")
+    if expected_run_nonce is not None and run_nonce != expected_run_nonce:
+        raise ValueError("SPHERE worker run nonce drifted")
+    if (
+        expected_evidence_path is not None
+        and Path(evidence_path) != expected_evidence_path
+    ):
+        raise ValueError("SPHERE worker evidence path drifted")
     if payload.get("registry", {}).get("sha256") != sha256_file(registry_path):
         raise ValueError("SPHERE registry hash binding drifted")
 
@@ -152,6 +191,7 @@ def validate_worker_evidence(
         "logical_minibatch_exact_penalty": True,
         "logical_minibatch_surrogate_replay": True,
         "logical_minibatch_gradient_ratio": True,
+        "optimizer_gradient_assembly": "explicit_ppo_plus_lambda_sphere",
         "gradient_checkpointing_required_off": True,
         "torch_compile_required_off": True,
     }
@@ -174,14 +214,29 @@ def validate_worker_evidence(
         )
 
     passes = payload.get("passes", {})
-    for field in (
-        "ppo_only_forward_backward",
-        "sphere_only_forward_backward",
-        "combined_forward_backward",
-        "optimizer_steps",
-    ):
-        if passes.get(field) != 1:
-            raise ValueError(f"SPHERE pass count drifted for {field}")
+    expected_pass_counts = {
+        "ppo_only_forward_backward": 1,
+        "sphere_only_forward_backward": 1,
+        "combined_forward_backward": 0,
+        "explicit_gradient_combination": 1,
+        "optimizer_steps": 1,
+    }
+    expected_pass_keys = set(expected_pass_counts) | {
+        "collection",
+        "logical_objective",
+        "sphere",
+    }
+    if set(passes) != expected_pass_keys:
+        raise ValueError(
+            "SPHERE pass inventory drifted: "
+            f"actual={sorted(passes)}, expected={sorted(expected_pass_keys)}"
+        )
+    for field, expected in expected_pass_counts.items():
+        if passes.get(field) != expected:
+            raise ValueError(
+                f"SPHERE pass count drifted for {field}: "
+                f"{passes.get(field)!r} != {expected}"
+            )
 
     collection = passes.get("collection", {})
     logical = passes.get("logical_objective", {})
@@ -249,77 +304,335 @@ def validate_worker_evidence(
         abs_tol=1e-2,
     )
 
-    replay_summary: dict[str, Any] = {}
-    for phase_name in ("sphere", "combined"):
-        phase = passes.get(phase_name, {})
+    phase_name = "sphere"
+    phase = passes.get(phase_name, {})
+    if (
+        int(phase.get("microbatches", 0)) != microbatches
+        or int(phase.get("identity_matches", 0)) != microbatches
+    ):
+        raise ValueError("sphere replay coverage drifted")
+    _require_close(
+        phase.get("penalty_sum"),
+        logical_penalty,
+        "sphere logical penalty",
+        rel_tol=5e-6,
+        abs_tol=1e-2,
+    )
+    surrogate_sum = _require_close(
+        phase.get("surrogate_sum"),
+        logical_penalty,
+        "sphere replay surrogate",
+        rel_tol=5e-4,
+        abs_tol=1e-2,
+    )
+    if phase.get("surrogate_matches_penalty") is not True:
+        raise ValueError("sphere replay surrogate self-check failed")
+    _require_close(
+        phase.get("collection_surrogate_dot_sum"),
+        logical_surrogate_dot,
+        "sphere collection surrogate dot",
+        rel_tol=1e-9,
+        abs_tol=1e-6,
+    )
+    raw_surrogate_sum = _finite(
+        phase.get("raw_surrogate_sum"), "sphere replay raw surrogate"
+    )
+    raw_difference = raw_surrogate_sum - logical_surrogate_dot
+    _require_close(
+        phase.get("raw_surrogate_difference"),
+        raw_difference,
+        "sphere replay raw reduction difference",
+        rel_tol=1e-9,
+        abs_tol=1e-6,
+    )
+    raw_relative_difference = abs(raw_difference) / max(abs(logical_surrogate_dot), 1.0)
+    _require_close(
+        phase.get("raw_surrogate_relative_difference"),
+        raw_relative_difference,
+        "sphere replay raw relative reduction difference",
+        rel_tol=1e-9,
+        abs_tol=1e-12,
+    )
+
+    layers = phase.get("layers", {})
+    if list(layers) != names:
+        raise ValueError("sphere replay target order drifted")
+    aggregate_difference_squared = 0.0
+    aggregate_reference_squared = 0.0
+    aggregate_max_difference = 0.0
+    aggregate_reference_max = 0.0
+    aggregate_different_values = 0
+    aggregate_total_values = 0
+    for name, layer in layers.items():
+        if int(layer.get("calls", 0)) != microbatches:
+            raise ValueError(f"sphere replay call count drifted at {name}")
+        if int(layer.get("token_rows", 0)) != total_rows:
+            raise ValueError(f"sphere replay token rows drifted at {name}")
+        feature_dim = int(layer.get("feature_dim", 0))
+        if feature_dim != 9216:
+            raise ValueError(f"sphere replay feature dimension drifted at {name}")
+        _finite(
+            layer.get("surrogate_sum_before_global_correction"),
+            f"sphere replay surrogate at {name}",
+        )
+        difference_l2 = _finite_nonnegative(
+            layer.get("feature_difference_l2_norm"),
+            f"sphere replay feature difference at {name}",
+        )
+        reference_l2 = _finite_positive(
+            layer.get("feature_reference_l2_norm"),
+            f"sphere replay feature reference norm at {name}",
+        )
+        relative_l2 = _finite_nonnegative(
+            layer.get("feature_relative_l2_difference"),
+            f"sphere replay relative feature difference at {name}",
+        )
+        _require_close(
+            relative_l2,
+            difference_l2 / reference_l2,
+            f"sphere replay relative L2 identity at {name}",
+            rel_tol=1e-8,
+            abs_tol=1e-12,
+        )
+        max_difference = _finite_nonnegative(
+            layer.get("feature_max_abs_difference"),
+            f"sphere replay max feature difference at {name}",
+        )
+        reference_max = _finite_positive(
+            layer.get("feature_reference_max_abs"),
+            f"sphere replay feature reference max at {name}",
+        )
+        relative_max = _finite_nonnegative(
+            layer.get("feature_relative_max_difference"),
+            f"sphere replay relative max difference at {name}",
+        )
+        _require_close(
+            relative_max,
+            max_difference / max(reference_max, 1e-12),
+            f"sphere replay relative max identity at {name}",
+            rel_tol=1e-8,
+            abs_tol=1e-12,
+        )
+        total_values = int(layer.get("feature_total_values", 0))
+        different_values = int(layer.get("feature_different_values", -1))
+        if total_values != total_rows * feature_dim:
+            raise ValueError(f"sphere replay feature value count drifted at {name}")
+        if not 0 <= different_values <= total_values:
+            raise ValueError(f"sphere replay different-value count drifted at {name}")
+        layer_within_tolerance = (
+            relative_l2 <= SPHERE_REPLAY_RELATIVE_L2_TOLERANCE
+            and relative_max <= SPHERE_REPLAY_RELATIVE_MAX_TOLERANCE
+        )
         if (
-            int(phase.get("microbatches", 0)) != microbatches
-            or int(phase.get("identity_matches", 0)) != microbatches
+            layer.get("feature_replay_within_tolerance") is not True
+            or not layer_within_tolerance
         ):
-            raise ValueError(f"{phase_name} replay coverage drifted")
+            raise ValueError(f"sphere replay feature drift exceeds tolerance at {name}")
+        aggregate_difference_squared += difference_l2 * difference_l2
+        aggregate_reference_squared += reference_l2 * reference_l2
+        aggregate_max_difference = max(aggregate_max_difference, max_difference)
+        aggregate_reference_max = max(aggregate_reference_max, reference_max)
+        aggregate_different_values += different_values
+        aggregate_total_values += total_values
+
+    feature_replay = phase.get("feature_replay", {})
+    difference_l2 = _finite_nonnegative(
+        feature_replay.get("difference_l2_norm"),
+        "sphere replay aggregate feature difference",
+    )
+    reference_l2 = _finite_positive(
+        feature_replay.get("reference_l2_norm"),
+        "sphere replay aggregate reference norm",
+    )
+    relative_l2 = _finite_nonnegative(
+        feature_replay.get("relative_l2_difference"),
+        "sphere replay aggregate relative L2 difference",
+    )
+    max_difference = _finite_nonnegative(
+        feature_replay.get("max_abs_difference"),
+        "sphere replay aggregate max difference",
+    )
+    reference_max = _finite_positive(
+        feature_replay.get("reference_max_abs"),
+        "sphere replay aggregate reference max",
+    )
+    relative_max = _finite_nonnegative(
+        feature_replay.get("relative_max_difference"),
+        "sphere replay aggregate relative max difference",
+    )
+    expected_difference_l2 = math.sqrt(aggregate_difference_squared)
+    expected_reference_l2 = math.sqrt(aggregate_reference_squared)
+    for actual, expected, label in (
+        (difference_l2, expected_difference_l2, "aggregate difference L2"),
+        (reference_l2, expected_reference_l2, "aggregate reference L2"),
+        (relative_l2, difference_l2 / reference_l2, "aggregate relative L2"),
+        (max_difference, aggregate_max_difference, "aggregate max difference"),
+        (reference_max, aggregate_reference_max, "aggregate reference max"),
+        (
+            relative_max,
+            max_difference / max(reference_max, 1e-12),
+            "aggregate relative max",
+        ),
+    ):
         _require_close(
-            phase.get("penalty_sum"),
-            logical_penalty,
-            f"{phase_name} logical penalty",
-            rel_tol=5e-6,
-            abs_tol=1e-2,
+            actual,
+            expected,
+            f"sphere replay {label}",
+            rel_tol=1e-8,
+            abs_tol=1e-10,
         )
-        surrogate_sum = _require_close(
-            phase.get("surrogate_sum"),
-            logical_penalty,
-            f"{phase_name} replay surrogate",
-            rel_tol=5e-4,
-            abs_tol=1e-2,
-        )
-        if phase.get("surrogate_matches_penalty") is not True:
-            raise ValueError(f"{phase_name} replay self-check failed")
-        _require_close(
-            phase.get("collection_surrogate_dot_sum"),
-            logical_surrogate_dot,
-            f"{phase_name} collection surrogate dot",
-            rel_tol=1e-6,
-            abs_tol=1e-2,
-        )
-        raw_surrogate_sum = _require_close(
-            phase.get("raw_surrogate_sum"),
-            logical_surrogate_dot,
-            f"{phase_name} replay raw surrogate",
-            rel_tol=1e-6,
-            abs_tol=1e-2,
-        )
-        if phase.get("raw_surrogate_matches_collection") is not True:
-            raise ValueError(f"{phase_name} replay feature/RNG self-check failed")
-        layers = phase.get("layers", {})
-        if list(layers) != names:
-            raise ValueError(f"{phase_name} replay target order drifted")
-        for name, layer in layers.items():
-            if int(layer.get("calls", 0)) != microbatches:
-                raise ValueError(f"{phase_name} replay call count drifted at {name}")
-            if int(layer.get("token_rows", 0)) != total_rows:
-                raise ValueError(f"{phase_name} replay token rows drifted at {name}")
-            if int(layer.get("feature_dim", 0)) != 9216:
-                raise ValueError(
-                    f"{phase_name} replay feature dimension drifted at {name}"
-                )
-            _finite(
-                layer.get("surrogate_sum_before_global_correction"),
-                f"{phase_name} replay surrogate at {name}",
-            )
-        replay_summary[phase_name] = {
+    if int(feature_replay.get("different_values", -1)) != aggregate_different_values:
+        raise ValueError("sphere replay aggregate different-value count drifted")
+    if int(feature_replay.get("total_values", 0)) != aggregate_total_values:
+        raise ValueError("sphere replay aggregate total-value count drifted")
+    _require_close(
+        feature_replay.get("relative_l2_tolerance"),
+        SPHERE_REPLAY_RELATIVE_L2_TOLERANCE,
+        "sphere replay relative L2 tolerance",
+        rel_tol=0.0,
+        abs_tol=0.0,
+    )
+    _require_close(
+        feature_replay.get("relative_max_tolerance"),
+        SPHERE_REPLAY_RELATIVE_MAX_TOLERANCE,
+        "sphere replay relative max tolerance",
+        rel_tol=0.0,
+        abs_tol=0.0,
+    )
+    if (
+        feature_replay.get("within_tolerance") is not True
+        or relative_l2 > SPHERE_REPLAY_RELATIVE_L2_TOLERANCE
+        or relative_max > SPHERE_REPLAY_RELATIVE_MAX_TOLERANCE
+    ):
+        raise ValueError("sphere replay aggregate feature drift exceeds tolerance")
+    replay_summary = {
+        "sphere": {
             "microbatches": microbatches,
             "identity_matches": microbatches,
             "surrogate_sum": surrogate_sum,
             "raw_surrogate_sum": raw_surrogate_sum,
+            "raw_surrogate_relative_difference": raw_relative_difference,
+            "feature_relative_l2_difference": relative_l2,
+            "feature_relative_max_difference": relative_max,
+            "feature_different_values": aggregate_different_values,
+            "feature_total_values": aggregate_total_values,
         }
+    }
+
+    assembly = payload.get("gradient_assembly", {})
+    expected_assembly_fields = {
+        "mode",
+        "parameter_tensors",
+        "element_count",
+        "finite",
+        "accumulation_dtype",
+        "ppo_source_dtype_counts",
+        "sphere_source_dtype_counts",
+        "destination_dtype_counts",
+        "ppo_representation_counts",
+        "sphere_representation_counts",
+        "destination_representation_counts",
+        "ppo_placement_counts",
+        "sphere_placement_counts",
+        "destination_placement_counts",
+        "ppo_l2_norm",
+        "sphere_l2_norm",
+        "ppo_sphere_dot_product",
+        "precast_expected_l2_norm",
+        "postcast_expected_l2_norm",
+        "actual_l2_norm",
+        "full_tensor_residual_l2_norm",
+        "full_tensor_residual_max_abs",
+        "postcast_delta_from_ppo_l2_norm",
+        "postcast_delta_from_ppo_max_abs",
+        "postcast_values_different_from_ppo",
+        "postcast_quantization_error_l2_norm",
+        "postcast_quantization_error_max_abs",
+    }
+    if set(assembly) != expected_assembly_fields:
+        raise ValueError("SPHERE optimizer gradient assembly fields drifted")
+    if assembly.get("mode") != "explicit_ppo_plus_lambda_sphere":
+        raise ValueError("SPHERE optimizer gradient assembly mode drifted")
+    if assembly.get("finite") is not True:
+        raise ValueError("SPHERE optimizer gradient assembly is non-finite")
+    if assembly.get("accumulation_dtype") != "torch.float32":
+        raise ValueError("SPHERE optimizer gradient accumulation dtype drifted")
+    assembly_tensors = int(assembly.get("parameter_tensors", 0))
+    element_count = int(assembly.get("element_count", 0))
+    allowed_dtypes = {"torch.float32", "torch.bfloat16", "torch.float16"}
+    count_fields = (
+        "ppo_source_dtype_counts",
+        "sphere_source_dtype_counts",
+        "destination_dtype_counts",
+        "ppo_representation_counts",
+        "sphere_representation_counts",
+        "destination_representation_counts",
+        "ppo_placement_counts",
+        "sphere_placement_counts",
+        "destination_placement_counts",
+    )
+    for field in count_fields:
+        counts = assembly.get(field)
+        if (
+            not isinstance(counts, dict)
+            or not counts
+            or any(not isinstance(key, str) or not key for key in counts)
+            or any(int(count) <= 0 for count in counts.values())
+            or sum(int(count) for count in counts.values()) != assembly_tensors
+        ):
+            raise ValueError(
+                f"SPHERE optimizer gradient assembly inventory is malformed: {field}"
+            )
+    for field in (
+        "ppo_source_dtype_counts",
+        "sphere_source_dtype_counts",
+        "destination_dtype_counts",
+    ):
+        if not set(assembly[field]) <= allowed_dtypes:
+            raise ValueError(
+                f"SPHERE optimizer gradient assembly dtype is unsupported: {field}"
+            )
+    if assembly_tensors <= 0 or element_count <= 0:
+        raise ValueError("SPHERE optimizer gradient assembly inventory is malformed")
 
     gradients = payload.get("gradients", {})
+    expected_gradient_keys = {
+        "ppo",
+        "sphere",
+        "optimizer_assembled",
+        "lambda",
+        "expected_lambda",
+        "regularizer_contribution_l2_norm",
+        "regularizer_to_ppo_norm_ratio",
+        "expected_regularizer_to_ppo_norm_ratio",
+        "predicted_optimizer_projection",
+        "actual_optimizer_projection",
+        "optimizer_projection_residual",
+        "optimizer_projection_tolerance",
+        "optimizer_reported_preclip_grad_norm",
+        "target_activation_gradients",
+    }
+    if set(gradients) != expected_gradient_keys:
+        raise ValueError("SPHERE gradient evidence fields drifted")
     ppo_norm, ppo_projection = _validate_gradient_row(gradients.get("ppo", {}), "PPO")
     sphere_norm, sphere_projection = _validate_gradient_row(
         gradients.get("sphere", {}), "SPHERE"
     )
-    combined_norm, combined_projection = _validate_gradient_row(
-        gradients.get("combined", {}), "combined"
+    assembled_norm, assembled_projection = _validate_gradient_row(
+        gradients.get("optimizer_assembled", {}), "assembled optimizer"
     )
+    if int(gradients["optimizer_assembled"]["tensors_with_grad"]) != assembly_tensors:
+        raise ValueError("SPHERE assembled gradient tensor inventory drifted")
+    tensor_counts = {
+        int(gradients[name]["tensors_with_grad"])
+        for name in ("ppo", "sphere", "optimizer_assembled")
+    }
+    projection_counts = {
+        int(gradients[name]["projection_sample_count"])
+        for name in ("ppo", "sphere", "optimizer_assembled")
+    }
+    if tensor_counts != {assembly_tensors} or len(projection_counts) != 1:
+        raise ValueError("SPHERE PPO/SPHERE/assembled gradient coverage drifted")
     coefficient = _finite_positive(gradients.get("lambda"), "SPHERE lambda")
     expected_lambda = variant.rho * ppo_norm / (sphere_norm + variant.epsilon)
     _require_close(
@@ -335,6 +648,13 @@ def validate_worker_evidence(
         "reported expected SPHERE lambda",
         rel_tol=1e-9,
         abs_tol=0.0,
+    )
+    _require_close(
+        gradients.get("regularizer_contribution_l2_norm"),
+        coefficient * sphere_norm,
+        "SPHERE regularizer contribution norm",
+        rel_tol=1e-9,
+        abs_tol=1e-12,
     )
     ratio = _finite_positive(
         gradients.get("regularizer_to_ppo_norm_ratio"),
@@ -355,43 +675,152 @@ def validate_worker_evidence(
         rel_tol=1e-9,
         abs_tol=1e-15,
     )
+
+    assembly_ppo_norm = _require_close(
+        assembly.get("ppo_l2_norm"),
+        ppo_norm,
+        "full-tensor assembly PPO norm",
+        rel_tol=1e-5,
+        abs_tol=1e-7,
+    )
+    assembly_sphere_norm = _require_close(
+        assembly.get("sphere_l2_norm"),
+        sphere_norm,
+        "full-tensor assembly SPHERE norm",
+        rel_tol=1e-5,
+        abs_tol=1e-7,
+    )
+    ppo_sphere_dot = _finite(
+        assembly.get("ppo_sphere_dot_product"),
+        "full-tensor PPO/SPHERE dot product",
+    )
+    cauchy_bound = assembly_ppo_norm * assembly_sphere_norm
+    if abs(ppo_sphere_dot) > cauchy_bound * (1.0 + 1e-5) + 1e-7:
+        raise ValueError("SPHERE full-tensor dot product violates Cauchy bound")
+    expected_precast_squared = (
+        assembly_ppo_norm * assembly_ppo_norm
+        + 2.0 * coefficient * ppo_sphere_dot
+        + coefficient * coefficient * assembly_sphere_norm * assembly_sphere_norm
+    )
+    if expected_precast_squared < -1e-6:
+        raise ValueError("SPHERE expected assembled gradient norm squared is negative")
+    expected_precast_norm = math.sqrt(max(expected_precast_squared, 0.0))
+    _require_close(
+        assembly.get("precast_expected_l2_norm"),
+        expected_precast_norm,
+        "full-tensor precast expected gradient norm",
+        rel_tol=2e-5,
+        abs_tol=1e-7,
+    )
+    postcast_expected_norm = _finite_positive(
+        assembly.get("postcast_expected_l2_norm"),
+        "full-tensor postcast expected gradient norm",
+    )
+    actual_full_norm = _finite_positive(
+        assembly.get("actual_l2_norm"),
+        "full-tensor actual optimizer gradient norm",
+    )
+    _require_close(
+        actual_full_norm,
+        postcast_expected_norm,
+        "full-tensor postcast expected/actual gradient norm",
+        rel_tol=1e-7,
+        abs_tol=1e-8,
+    )
+    _require_close(
+        actual_full_norm,
+        assembled_norm,
+        "full-tensor actual/reported assembled gradient norm",
+        rel_tol=1e-5,
+        abs_tol=1e-7,
+    )
+    residual_l2 = _finite_nonnegative(
+        assembly.get("full_tensor_residual_l2_norm"),
+        "full-tensor assembly residual L2 norm",
+    )
+    residual_max = _finite_nonnegative(
+        assembly.get("full_tensor_residual_max_abs"),
+        "full-tensor assembly residual max",
+    )
+    if residual_l2 != 0.0 or residual_max != 0.0:
+        raise ValueError("SPHERE full-tensor optimizer assembly residual is nonzero")
+    postcast_delta_l2 = _finite_positive(
+        assembly.get("postcast_delta_from_ppo_l2_norm"),
+        "postcast SPHERE contribution L2 norm",
+    )
+    postcast_delta_max = _finite_positive(
+        assembly.get("postcast_delta_from_ppo_max_abs"),
+        "postcast SPHERE contribution max",
+    )
+    changed_values = int(assembly.get("postcast_values_different_from_ppo", 0))
+    if not 0 < changed_values <= element_count:
+        raise ValueError("SPHERE contribution did not survive the destination cast")
+    _finite_nonnegative(
+        assembly.get("postcast_quantization_error_l2_norm"),
+        "postcast assembly quantization-error L2 norm",
+    )
+    _finite_nonnegative(
+        assembly.get("postcast_quantization_error_max_abs"),
+        "postcast assembly quantization-error max",
+    )
+    if postcast_delta_l2 <= 0.0 or postcast_delta_max <= 0.0:
+        raise ValueError("SPHERE contribution did not survive the destination cast")
+
     predicted_projection = ppo_projection + coefficient * sphere_projection
     _require_close(
-        gradients.get("predicted_combined_projection"),
+        gradients.get("predicted_optimizer_projection"),
         predicted_projection,
-        "predicted combined gradient projection",
+        "predicted optimizer gradient projection",
         rel_tol=1e-9,
         abs_tol=1e-10,
     )
     _require_close(
-        gradients.get("actual_combined_projection"),
-        combined_projection,
-        "actual combined gradient projection",
+        gradients.get("actual_optimizer_projection"),
+        assembled_projection,
+        "actual optimizer gradient projection",
         rel_tol=1e-9,
         abs_tol=1e-10,
     )
     residual = _finite(
-        gradients.get("combined_projection_residual"),
-        "combined gradient projection residual",
+        gradients.get("optimizer_projection_residual"),
+        "optimizer gradient projection residual",
     )
     _require_close(
         residual,
-        combined_projection - predicted_projection,
-        "combined projection residual identity",
+        assembled_projection - predicted_projection,
+        "optimizer projection residual identity",
         rel_tol=1e-9,
         abs_tol=1e-10,
     )
     tolerance = _finite_positive(
-        gradients.get("combined_projection_tolerance"),
-        "combined projection tolerance",
+        gradients.get("optimizer_projection_tolerance"),
+        "optimizer projection tolerance",
+    )
+    expected_tolerance = max(
+        1e-5,
+        5e-4 * max(abs(predicted_projection), abs(assembled_projection), 1.0),
+    )
+    _require_close(
+        tolerance,
+        expected_tolerance,
+        "optimizer projection tolerance contract",
+        rel_tol=0.0,
+        abs_tol=0.0,
     )
     if abs(residual) > tolerance:
         raise ValueError(
-            f"combined gradient projection residual {residual} exceeds {tolerance}"
+            f"optimizer gradient projection residual {residual} exceeds {tolerance}"
         )
     optimizer_norm = _finite_positive(
         gradients.get("optimizer_reported_preclip_grad_norm"),
         "optimizer-reported preclip gradient norm",
+    )
+    _require_close(
+        optimizer_norm,
+        assembled_norm,
+        "optimizer-reported versus assembled gradient norm",
+        rel_tol=1e-5,
+        abs_tol=1e-7,
     )
 
     activation = gradients.get("target_activation_gradients", {})
@@ -406,11 +835,33 @@ def validate_worker_evidence(
         _finite_positive(row.get("gradient_l2_norm"), f"activation gradient at {name}")
 
     checks = payload.get("checks", {})
-    if not checks or not all(value is True for value in checks.values()):
+    expected_checks = {
+        "logical_minibatch_penalty_finite_nonzero",
+        "logical_feature_gradients_finite_nonzero",
+        "sphere_gradient_finite_nonzero",
+        "lambda_formula_matches",
+        "ratio_formula_matches",
+        "sphere_replay_matches_logical_penalty",
+        "sphere_replay_features_within_tolerance",
+        "all_replay_microbatch_identities_match",
+        "optimizer_gradient_assembly_finite",
+        "full_tensor_assembly_exact",
+        "postcast_regularizer_contribution_nonzero",
+        "optimizer_projection_matches_explicit_sum",
+        "optimizer_preclip_grad_norm_finite_nonzero",
+        "all_target_activation_gradients_nonzero",
+        "optimizer_step_exactly_one",
+    }
+    if set(checks) != expected_checks:
+        raise ValueError("SPHERE worker check inventory drifted")
+    if not all(value is True for value in checks.values()):
         raise ValueError(f"SPHERE worker checks failed: {checks}")
     for check_name in (
-        "sphere_replay_features_match_collection",
-        "combined_replay_features_match_collection",
+        "sphere_replay_features_within_tolerance",
+        "optimizer_gradient_assembly_finite",
+        "full_tensor_assembly_exact",
+        "postcast_regularizer_contribution_nonzero",
+        "optimizer_projection_matches_explicit_sum",
     ):
         if checks.get(check_name) is not True:
             raise ValueError(f"SPHERE worker check is missing/failed: {check_name}")
@@ -423,11 +874,16 @@ def validate_worker_evidence(
         "logical_minibatch_penalty": logical_penalty,
         "ppo_gradient_l2_norm": ppo_norm,
         "sphere_gradient_l2_norm": sphere_norm,
-        "combined_gradient_l2_norm": combined_norm,
+        "assembled_optimizer_gradient_l2_norm": assembled_norm,
+        "full_tensor_assembly_residual_l2_norm": residual_l2,
+        "full_tensor_assembly_residual_max_abs": residual_max,
+        "postcast_regularizer_delta_l2_norm": postcast_delta_l2,
+        "postcast_regularizer_delta_max_abs": postcast_delta_max,
+        "postcast_values_different_from_ppo": changed_values,
         "lambda": coefficient,
         "regularizer_to_ppo_norm_ratio": ratio,
-        "combined_projection_residual": residual,
-        "combined_projection_tolerance": tolerance,
+        "optimizer_projection_residual": residual,
+        "optimizer_projection_tolerance": tolerance,
         "optimizer_reported_preclip_grad_norm": optimizer_norm,
         "replays": replay_summary,
     }
@@ -462,8 +918,14 @@ def _yaml_scalar(text: str, dotted_path: str) -> str:
 def validate_resolved_config(path: Path) -> dict[str, Any]:
     text = path.read_text(encoding="utf-8")
     expected = {
+        "model_engine": "dp",
         "data.train_batch_size": "400",
         "actor_rollout_ref.model.enable_gradient_checkpointing": "false",
+        "actor_rollout_ref.actor.strategy": "fsdp",
+        "actor_rollout_ref.actor.fsdp_config.strategy": "fsdp",
+        "actor_rollout_ref.actor.fsdp_config.model_dtype": "fp32",
+        "actor_rollout_ref.actor.fsdp_config.dtype": "bfloat16",
+        "actor_rollout_ref.actor.fsdp_config.use_orig_params": "false",
         "actor_rollout_ref.actor.ppo_mini_batch_size": "400",
         "actor_rollout_ref.actor.ppo_micro_batch_size_per_gpu": "4",
         "actor_rollout_ref.actor.ppo_epochs": "1",
@@ -601,7 +1063,11 @@ def _validate_parameter_evidence(
 
 
 def _validate_run_contract(
-    payload: dict[str, Any], *, run_dir: Path, expected_variant: str
+    payload: dict[str, Any],
+    *,
+    run_dir: Path,
+    expected_variant: str,
+    expected_run_nonce_sha256: str,
 ) -> dict[str, Any]:
     if payload.get("schema") != RUN_CONTRACT_SCHEMA:
         raise ValueError("unexpected SPHERE run-contract schema")
@@ -625,9 +1091,14 @@ def _validate_run_contract(
         "gradient_checkpointing": False,
         "torch_compile": False,
         "logical_minibatch_exact_penalty": True,
+        "backward_passes": {"ppo": 1, "sphere": 1, "combined": 0},
+        "optimizer_gradient_assembly": "explicit_ppo_plus_lambda_sphere",
+        "full_tensor_postcast_assembly_check": True,
     }
     if algorithm != expected_algorithm:
         raise ValueError(f"SPHERE run-contract algorithm drifted: {algorithm!r}")
+    if payload.get("run_nonce_sha256") != expected_run_nonce_sha256:
+        raise ValueError("SPHERE run-contract nonce binding drifted")
     if payload.get("runtime", {}).get("verl_commit") != EXPECTED_VERL_COMMIT:
         raise ValueError("SPHERE run-contract veRL commit drifted")
     constraints = payload.get("constraints", {})
@@ -655,18 +1126,34 @@ def audit_training_run(
 ) -> tuple[dict[str, Any], dict[str, Any], dict[str, Any]]:
     """Audit a completed one-update run; return evidence, inventory, receipt."""
     worker_path = run_dir / "sphere/worker-evidence.json"
+    failed_worker_path = run_dir / "sphere/worker-evidence.failed.json"
+    nonce_path = run_dir / "sphere/run-nonce"
     parameter_path = run_dir / "parameter-evidence.json"
     contract_path = run_dir / "contract/run-contract.json"
     config_path = run_dir / "contract/resolved-config.yaml"
+    if failed_worker_path.exists():
+        raise ValueError("coexisting failed SPHERE worker evidence exists")
+    if worker_path.is_symlink() or nonce_path.is_symlink():
+        raise ValueError("SPHERE worker evidence identity files cannot be symlinks")
+    run_nonce = nonce_path.read_text(encoding="utf-8").strip()
+    if not re.fullmatch(r"[0-9a-f]{64}", run_nonce):
+        raise ValueError("SPHERE run nonce is malformed")
+    if worker_path.stat().st_mtime_ns < nonce_path.stat().st_mtime_ns:
+        raise ValueError("SPHERE worker evidence predates its run nonce")
+    run_nonce_sha256 = sha256_file(nonce_path)
     worker_summary = validate_worker_evidence(
         _read_json(worker_path),
         expected_variant=expected_variant,
         registry_path=registry_path,
+        expected_run_id=run_dir.name,
+        expected_run_nonce=run_nonce,
+        expected_evidence_path=worker_path,
     )
     contract_summary = _validate_run_contract(
         _read_json(contract_path),
         run_dir=run_dir,
         expected_variant=expected_variant,
+        expected_run_nonce_sha256=run_nonce_sha256,
     )
     config_summary = validate_resolved_config(config_path)
 
@@ -692,6 +1179,7 @@ def audit_training_run(
     _write_json_atomic(inventory_path, checkpoint_inventory)
     artifact_hashes = {
         "worker_evidence_sha256": sha256_file(worker_path),
+        "run_nonce_sha256": run_nonce_sha256,
         "rollout_ledger_sha256": sha256_file(rollout_files[0]),
         "sphere_registry_sha256": sha256_file(registry_path),
         "parameter_evidence_sha256": sha256_file(parameter_path),
@@ -792,6 +1280,7 @@ def audit_final_run(
         raise ValueError("SPHERE training-complete step count drifted")
     expected_hashes = {
         "worker_evidence_sha256": sha256_file(worker_path),
+        "run_nonce_sha256": sha256_file(run_dir / "sphere/run-nonce"),
         "rollout_ledger_sha256": sha256_file(
             next(iter(sorted((run_dir / "rollouts").glob("*.jsonl"))))
         ),

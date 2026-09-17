@@ -42,24 +42,33 @@ microbatch 的 penalty 分别算完再求和。实现先在 PPO-only pass 中按
 microbatch 收集 detached action-token `Phi`，逐层拼成完整逻辑 minibatch，精确计算
 penalty 和闭式 `dL/dPhi`；随后按原 microbatch 顺序重放一个线性 surrogate，把同一
 `dL/dPhi` 传回模型参数。每次重放都核对 token/mask identity，所以 physical
-microbatch 只承担显存分块，不改变 SPHERE 目标。三次 pass 在同一逻辑 minibatch
-恢复同一个 Torch CPU/CUDA RNG 状态，使 PPO-only、SPHERE-only 和 combined 的随机图抽样一致；
-worker 还核对 replay 的原始线性 surrogate 与收集阶段特征一致。
+microbatch 只承担显存分块，不改变 SPHERE 目标。SPHERE replay 恢复 PPO collection
+开始前的 Torch CPU/CUDA RNG 状态。worker 直接逐元素比较 collection 与 replay 的
+`Phi`，要求整体相对 L2 差异不超过 `1e-5`、相对最大差异不超过 `1e-3`；大规模
+CUDA dot reduction 的末位差异只作为诊断值，不再冒充特征一致性证明。
 
 ## 自适应正则系数
 
-每个逻辑 PPO minibatch 做三次无参数更新的 forward/backward，再做唯一一次 optimizer
-step：
+每个逻辑 PPO minibatch 做两次 forward/backward，再显式组装唯一一次 optimizer
+step 所消费的梯度：
 
 ```text
 1. PPO-only backward + 收集完整逻辑 minibatch Phi -> ||g_ppo||
+   并保存完整 `g_ppo`
 2. 精确逻辑 minibatch SPHERE surrogate backward -> ||g_sphere||
 3. lambda = rho * ||g_ppo|| / (||g_sphere|| + 1e-8)
-4. (PPO + lambda*SPHERE) backward -> optimizer.step()
+4. 显式写入 `g_final = g_ppo + lambda * g_sphere`
+5. `optimizer.step()`
 ```
 
-`lambda` 作为 detached scalar。三次 backward 不等于三次训练；只有第 4 行之后执行
-一次 `optimizer.step()`，因此每臂仍是恰好一个 optimizer/global update。
+`lambda` 作为 detached scalar。公式与论文附录 Algorithm 1 的总 loss
+`L_PPO + lambda * L_SPHERE` 梯度严格等价，同时避开同一 FSDP 模型第三次独立 replay
+产生的数值漂移。两次 backward 后只执行一次 `optimizer.step()`，因此每臂仍是恰好
+一个 optimizer/global update。证据中必须记录 `combined_forward_backward=0`、
+`explicit_gradient_combination=1`。组装时逐参数用 FP32 计算预期和，再转换到 optimizer
+实际接收的梯度 dtype；随后对全部梯度元素核对 post-cast 预期值与实写值，要求 L2 和
+最大绝对残差都为零，并要求转换后相对 PPO 梯度至少有一个元素和非零 L2 变化。抽样
+投影只保留为辅助诊断，不能单独证明 SPHERE 梯度已经进入 optimizer。
 
 ## 冻结比较合同
 
@@ -85,7 +94,12 @@ step：
 - 每个目标层首个 microbatch activation gradient 的 finite/nonzero 证据；
 - optimizer step 数、global step 1 checkpoint、参数变化审计；
 - 训练后冻结 test100 的逐题轨迹与成功率；
-- exact source/veRL/model/data/runtime/launcher hashes。
+- exact source/veRL/model/data/runtime/launcher hashes；
+- 本轮唯一 256-bit run nonce、canonical worker-evidence 路径，以及 worker / training
+  receipt / run contract 的 nonce 哈希绑定；若 success 与 failed evidence 共存或目标路径已存在，
+  launcher/auditor 必须 fail closed；
+- PPO/SPHERE source gradient、FP32 assembly、optimizer destination gradient 的 dtype、
+  tensor representation 与 DTensor placement 计数，以及 post-cast 全张量残差。
 
 若三臂都保持 100%，结论只能是“SPHERE 三种实现均真实参与一次更新且保持 toy
 能力”，不能声称比普通 GRPO 提点。
