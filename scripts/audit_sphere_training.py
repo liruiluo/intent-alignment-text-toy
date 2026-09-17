@@ -199,7 +199,9 @@ def validate_worker_evidence(
     logical_penalty = _finite_positive(
         logical.get("penalty_sum"), "logical-minibatch SPHERE penalty"
     )
-    _finite(logical.get("surrogate_dot_sum"), "logical surrogate dot sum")
+    logical_surrogate_dot = _finite(
+        logical.get("surrogate_dot_sum"), "logical surrogate dot sum"
+    )
     _finite(logical.get("surrogate_correction"), "logical surrogate correction")
 
     collection_layers = collection.get("layers", {})
@@ -271,6 +273,22 @@ def validate_worker_evidence(
         )
         if phase.get("surrogate_matches_penalty") is not True:
             raise ValueError(f"{phase_name} replay self-check failed")
+        _require_close(
+            phase.get("collection_surrogate_dot_sum"),
+            logical_surrogate_dot,
+            f"{phase_name} collection surrogate dot",
+            rel_tol=1e-6,
+            abs_tol=1e-2,
+        )
+        raw_surrogate_sum = _require_close(
+            phase.get("raw_surrogate_sum"),
+            logical_surrogate_dot,
+            f"{phase_name} replay raw surrogate",
+            rel_tol=1e-6,
+            abs_tol=1e-2,
+        )
+        if phase.get("raw_surrogate_matches_collection") is not True:
+            raise ValueError(f"{phase_name} replay feature/RNG self-check failed")
         layers = phase.get("layers", {})
         if list(layers) != names:
             raise ValueError(f"{phase_name} replay target order drifted")
@@ -291,6 +309,7 @@ def validate_worker_evidence(
             "microbatches": microbatches,
             "identity_matches": microbatches,
             "surrogate_sum": surrogate_sum,
+            "raw_surrogate_sum": raw_surrogate_sum,
         }
 
     gradients = payload.get("gradients", {})
@@ -389,6 +408,12 @@ def validate_worker_evidence(
     checks = payload.get("checks", {})
     if not checks or not all(value is True for value in checks.values()):
         raise ValueError(f"SPHERE worker checks failed: {checks}")
+    for check_name in (
+        "sphere_replay_features_match_collection",
+        "combined_replay_features_match_collection",
+    ):
+        if checks.get(check_name) is not True:
+            raise ValueError(f"SPHERE worker check is missing/failed: {check_name}")
 
     return {
         "target_count": len(names),

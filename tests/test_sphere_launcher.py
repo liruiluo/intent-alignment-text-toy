@@ -70,6 +70,14 @@ def test_replay_surrogate_uses_stop_gradient_value_anchor():
     assert 'with_name("worker-evidence.failed.json")' in worker
 
 
+def test_all_gradient_passes_restore_the_same_torch_rng_state():
+    worker = WORKER.read_text(encoding="utf-8")
+
+    assert "replay_rng_state = self._capture_torch_rng_state()" in worker
+    assert worker.count("self._restore_torch_rng_state(replay_rng_state)") == 2
+    assert '"raw_surrogate_matches_collection"' in worker
+
+
 def test_gradient_projection_avoids_cuda_linspace_index_rounding():
     worker = WORKER.read_text(encoding="utf-8")
 

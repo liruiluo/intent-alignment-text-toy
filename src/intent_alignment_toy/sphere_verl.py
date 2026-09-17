@@ -209,6 +209,7 @@ class SphereTrainingWorker(TrainingWorker):
         self._phase_stats[phase] = {
             "microbatches": 0,
             "identity_matches": 0,
+            "raw_surrogate_sum": None,
             "surrogate_sum": None,
             "layers": {
                 name: {
@@ -356,6 +357,23 @@ class SphereTrainingWorker(TrainingWorker):
     def _accumulate_scalar(current, value: torch.Tensor) -> torch.Tensor:
         value = value.detach()
         return value if current is None else current + value
+
+    @staticmethod
+    def _capture_torch_rng_state() -> tuple[torch.Tensor, list[torch.Tensor]]:
+        """Snapshot every Torch RNG consumed by the three training passes."""
+        return (
+            torch.get_rng_state().clone(),
+            [state.clone() for state in torch.cuda.get_rng_state_all()],
+        )
+
+    @staticmethod
+    def _restore_torch_rng_state(
+        state: tuple[torch.Tensor, list[torch.Tensor]],
+    ) -> None:
+        """Replay one model pass without advancing training RNG three times."""
+        cpu_state, cuda_states = state
+        torch.set_rng_state(cpu_state)
+        torch.cuda.set_rng_state_all(cuda_states)
 
     def _collect_logical_features(self, data: TensorDict) -> None:
         if self._capture_phase != "collect":
@@ -528,6 +546,9 @@ class SphereTrainingWorker(TrainingWorker):
 
         stats["microbatches"] += 1
         stats["identity_matches"] += 1
+        stats["raw_surrogate_sum"] = self._accumulate_scalar(
+            stats["raw_surrogate_sum"], raw_surrogate
+        )
         stats["surrogate_sum"] = self._accumulate_scalar(
             stats["surrogate_sum"], surrogate
         )
@@ -689,11 +710,23 @@ class SphereTrainingWorker(TrainingWorker):
         if self._logical_objective is None:
             raise RuntimeError("SPHERE logical objective missing during serialization")
         penalty = float(self._logical_objective["penalty_sum"].item())
+        collection_surrogate = float(
+            self._logical_objective["surrogate_dot_sum"].item()
+        )
+        raw_surrogate = float(stats["raw_surrogate_sum"].item())
         surrogate = float(stats["surrogate_sum"].item())
         return {
             "microbatches": int(stats["microbatches"]),
             "identity_matches": int(stats["identity_matches"]),
             "penalty_sum": penalty,
+            "collection_surrogate_dot_sum": collection_surrogate,
+            "raw_surrogate_sum": raw_surrogate,
+            "raw_surrogate_matches_collection": math.isclose(
+                raw_surrogate,
+                collection_surrogate,
+                rel_tol=1e-6,
+                abs_tol=1e-2,
+            ),
             "surrogate_sum": surrogate,
             "surrogate_matches_penalty": math.isclose(
                 surrogate, penalty, rel_tol=5e-4, abs_tol=1e-2
@@ -838,6 +871,12 @@ class SphereTrainingWorker(TrainingWorker):
                 "combined_replay_matches_logical_penalty": combined_replay[
                     "surrogate_matches_penalty"
                 ],
+                "sphere_replay_features_match_collection": sphere_replay[
+                    "raw_surrogate_matches_collection"
+                ],
+                "combined_replay_features_match_collection": combined_replay[
+                    "raw_surrogate_matches_collection"
+                ],
                 "all_replay_microbatch_identities_match": (
                     sphere_replay["identity_matches"]
                     == combined_replay["identity_matches"]
@@ -915,6 +954,7 @@ class SphereTrainingWorker(TrainingWorker):
         ):
             self.engine.optimizer_zero_grad()
             self._begin_capture_phase("collect")
+            replay_rng_state = self._capture_torch_rng_state()
             self.engine.forward_backward_batch(
                 data, loss_function=self._ppo_collect_loss, forward_only=False
             )
@@ -926,6 +966,7 @@ class SphereTrainingWorker(TrainingWorker):
 
             self.engine.optimizer_zero_grad()
             self._begin_capture_phase("sphere")
+            self._restore_torch_rng_state(replay_rng_state)
             self.engine.forward_backward_batch(
                 data, loss_function=self._sphere_only_loss, forward_only=False
             )
@@ -947,6 +988,7 @@ class SphereTrainingWorker(TrainingWorker):
 
             self.engine.optimizer_zero_grad()
             self._begin_capture_phase("combined")
+            self._restore_torch_rng_state(replay_rng_state)
             output = self.engine.forward_backward_batch(
                 data, loss_function=self._combined_loss, forward_only=False
             )

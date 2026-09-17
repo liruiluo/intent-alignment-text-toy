@@ -42,7 +42,9 @@ microbatch 的 penalty 分别算完再求和。实现先在 PPO-only pass 中按
 microbatch 收集 detached action-token `Phi`，逐层拼成完整逻辑 minibatch，精确计算
 penalty 和闭式 `dL/dPhi`；随后按原 microbatch 顺序重放一个线性 surrogate，把同一
 `dL/dPhi` 传回模型参数。每次重放都核对 token/mask identity，所以 physical
-microbatch 只承担显存分块，不改变 SPHERE 目标。
+microbatch 只承担显存分块，不改变 SPHERE 目标。三次 pass 在同一逻辑 minibatch
+恢复同一个 Torch CPU/CUDA RNG 状态，使 PPO-only、SPHERE-only 和 combined 的随机图抽样一致；
+worker 还核对 replay 的原始线性 surrogate 与收集阶段特征一致。
 
 ## 自适应正则系数
 
