@@ -509,9 +509,20 @@ class SphereTrainingWorker(TrainingWorker):
                 layer_stats["surrogate_sum"], term
             )
 
-        surrogate = torch.stack(terms).sum()
-        if index == 0:
-            surrogate = surrogate + self._logical_surrogate_correction
+        raw_surrogate = torch.stack(terms).sum()
+        # The linear surrogate's value is arbitrary; only its gradient carries
+        # the exact logical-minibatch dL/dPhi.  Anchoring with
+        # raw - stop_gradient(raw) avoids catastrophic cancellation between a
+        # quartic penalty's ~4L dot product and a ~-3L global constant when
+        # BF16 replay features differ by roundoff across FSDP passes.
+        value_anchor = (
+            self._logical_objective["penalty_sum"].to(
+                device=raw_surrogate.device, dtype=raw_surrogate.dtype
+            )
+            if index == 0
+            else torch.zeros_like(raw_surrogate)
+        )
+        surrogate = raw_surrogate - raw_surrogate.detach() + value_anchor
         if not bool(torch.isfinite(surrogate).item()):
             raise FloatingPointError(f"non-finite SPHERE surrogate in {phase}")
 
@@ -845,18 +856,22 @@ class SphereTrainingWorker(TrainingWorker):
                 "optimizer_step_exactly_one": self._optimizer_steps == 1,
             },
         }
-        if not all(payload["checks"].values()):
-            raise RuntimeError(f"SPHERE evidence gate failed: {payload['checks']}")
-
+        passed = all(payload["checks"].values())
+        payload["status"] = "passed" if passed else "failed"
         self.sphere_evidence_path.parent.mkdir(parents=True, exist_ok=True)
-        temporary = self.sphere_evidence_path.with_name(
-            f".{self.sphere_evidence_path.name}.tmp.{os.getpid()}"
+        output_path = (
+            self.sphere_evidence_path
+            if passed
+            else self.sphere_evidence_path.with_name("worker-evidence.failed.json")
         )
+        temporary = output_path.with_name(f".{output_path.name}.tmp.{os.getpid()}")
         temporary.write_text(
             json.dumps(payload, ensure_ascii=False, indent=2) + "\n",
             encoding="utf-8",
         )
-        os.replace(temporary, self.sphere_evidence_path)
+        os.replace(temporary, output_path)
+        if not passed:
+            raise RuntimeError(f"SPHERE evidence gate failed: {payload['checks']}")
         self._logical_gradient_chunks = {}
         self._logical_surrogate_correction = None
 

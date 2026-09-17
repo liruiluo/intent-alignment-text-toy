@@ -126,6 +126,8 @@ def validate_worker_evidence(
     variant = load_sphere_variant(registry_path, expected_variant)
     if payload.get("schema") != WORKER_SCHEMA:
         raise ValueError("unexpected SPHERE worker evidence schema")
+    if payload.get("status") != "passed":
+        raise ValueError("SPHERE worker evidence is not a passed artifact")
     if payload.get("variant") != expected_variant:
         raise ValueError("SPHERE worker evidence variant drifted")
     if payload.get("registry", {}).get("sha256") != sha256_file(registry_path):

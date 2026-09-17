@@ -63,6 +63,13 @@ def test_sphere_only_backward_keeps_an_fsdp_output_anchor():
     assert "anchored_surrogate = surrogate + base_loss * 0.0" in worker
 
 
+def test_replay_surrogate_uses_stop_gradient_value_anchor():
+    worker = WORKER.read_text(encoding="utf-8")
+
+    assert "surrogate = raw_surrogate - raw_surrogate.detach() + value_anchor" in worker
+    assert 'with_name("worker-evidence.failed.json")' in worker
+
+
 def test_gradient_projection_avoids_cuda_linspace_index_rounding():
     worker = WORKER.read_text(encoding="utf-8")
 

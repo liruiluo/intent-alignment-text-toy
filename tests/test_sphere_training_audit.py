@@ -69,6 +69,7 @@ def worker_payload():
     }
     return {
         "schema": "intent_alignment_dense_sphere_worker_evidence_v2",
+        "status": "passed",
         "variant": "sphere_dense_last_adaptive_v1",
         "contract": {
             "layer_mode": "last",
