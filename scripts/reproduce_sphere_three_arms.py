@@ -27,7 +27,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Sequence
 
-EXPECTED_SOURCE_TAG = "sphere-one-step-repro-v1"
+EXPECTED_SOURCE_TAG = "sphere-one-step-repro-v2"
 EXPECTED_VERL_COMMIT = "483b8a009ba3a97563edee3a19887e4862b8094a"
 EXPECTED_TRAIN_PARQUET_SHA256 = (
     "4ab5bfa4f55f073617795c403a10a1b45310d136691ea5dff0377a58cb991ae1"
@@ -181,7 +181,15 @@ def run_logged(
 
 def git_output(repo_root: Path, *args: str) -> str:
     return subprocess.check_output(
-        ["git", "-C", str(repo_root), *args], text=True
+        [
+            "git",
+            "-c",
+            f"safe.directory={repo_root}",
+            "-C",
+            str(repo_root),
+            *args,
+        ],
+        text=True,
     ).strip()
 
 

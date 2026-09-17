@@ -41,14 +41,14 @@ Agent: RIGHT  -> 环境坐标 (3, 0)，成功并自动结束
 ```bash
 git clone https://github.com/liruiluo/intent-alignment-text-toy.git
 cd intent-alignment-text-toy
-git checkout sphere-one-step-repro-v1
+git checkout sphere-one-step-repro-v2
 
 git clone --branch v0.9.0 https://github.com/volcengine/verl.git /path/to/verl-v0.9.0
 test "$(git -C /path/to/verl-v0.9.0 rev-parse HEAD)" = \
   483b8a009ba3a97563edee3a19887e4862b8094a
 ```
 
-入口要求当前 `HEAD` 正好带有 annotated tag `sphere-one-step-repro-v1`；任意其他干净分支或提交都会被拒绝。
+入口要求当前 `HEAD` 正好带有 annotated tag `sphere-one-step-repro-v2`；任意其他干净分支或提交都会被拒绝。 `sphere-one-step-repro-v1` 仅保留首版审计历史，不用于正式复现。
 
 复现实验使用的运行时为 Python `3.12.12`、PyTorch `2.11.0+cu130`、Transformers `5.5.3`、SGLang `0.5.12`、TransferQueue `0.1.8` 和 CUDA `13.x`，硬件为 1×NVIDIA B300。入口会在训练前逐项核对 release tag、veRL commit、运行时版本、Qwen3.5-4B 权重与 tokenizer/chat-template hash，以及数据 hash；任一项不符就停止。精确训练 parquet 已随仓库放在 [`data/verl-v0.9.0/`](data/verl-v0.9.0/)，不需要依赖本机 PyArrow 重新序列化。
 

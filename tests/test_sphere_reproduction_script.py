@@ -94,7 +94,7 @@ def completed_status(variant: str) -> dict:
 
 def test_release_and_tokenizer_inputs_are_frozen():
     module = load_reproducer()
-    assert module.EXPECTED_SOURCE_TAG == "sphere-one-step-repro-v1"
+    assert module.EXPECTED_SOURCE_TAG == "sphere-one-step-repro-v2"
     assert {
         "chat_template.jinja",
         "merges.txt",
