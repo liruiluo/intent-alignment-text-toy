@@ -916,14 +916,15 @@ def _yaml_scalar(text: str, dotted_path: str) -> str:
         if stripped.startswith("-") or ":" not in stripped:
             continue
         key, value = stripped.split(":", 1)
+        key = key.strip().strip("'\"")
         while stack and stack[-1][0] >= indent:
             stack.pop()
-        path = tuple([item[1] for item in stack] + [key.strip()])
+        path = tuple([item[1] for item in stack] + [key])
         value = value.strip()
         if value:
             values[path] = value.strip("'\"")
         else:
-            stack.append((indent, key.strip()))
+            stack.append((indent, key))
     key = tuple(wanted)
     if key not in values:
         raise ValueError(f"resolved config is missing {dotted_path}")

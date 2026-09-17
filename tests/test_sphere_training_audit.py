@@ -252,7 +252,7 @@ actor_rollout_ref:
       use_orig_params: false
       use_torch_compile: false
   rollout:
-    n: 2
+    'n': 2
 trainer:
   total_training_steps: 1
   save_freq: 1
