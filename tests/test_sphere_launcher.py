@@ -129,6 +129,36 @@ def test_global_sphere_metrics_follow_verl_singleton_metric_contract():
     assert 'output["metrics"][name] = [' not in worker
 
 
+def test_replay_gate_uses_per_layer_l2_and_aggregate_linf():
+    worker = WORKER.read_text(encoding="utf-8")
+    auditor = (ROOT / "scripts" / "audit_sphere_training.py").read_text(
+        encoding="utf-8"
+    )
+
+    worker_layer_gate = worker[
+        worker.index("layer_within_tolerance = (") : worker.index(
+            "layer_payload[name]", worker.index("layer_within_tolerance = (")
+        )
+    ]
+    auditor_layer_start = auditor.index("layer_within_tolerance = relative_l2")
+    auditor_layer_gate = auditor[
+        auditor_layer_start : auditor.index("if (", auditor_layer_start)
+    ]
+    assert (
+        "layer_relative_l2 <= SPHERE_REPLAY_RELATIVE_L2_TOLERANCE" in worker_layer_gate
+    )
+    assert (
+        "layer_relative_max <= SPHERE_REPLAY_RELATIVE_MAX_TOLERANCE"
+        not in worker_layer_gate
+    )
+    assert "relative_l2 <= SPHERE_REPLAY_RELATIVE_L2_TOLERANCE" in auditor_layer_gate
+    assert (
+        "relative_max <= SPHERE_REPLAY_RELATIVE_MAX_TOLERANCE" not in auditor_layer_gate
+    )
+    assert "relative_max <= SPHERE_REPLAY_RELATIVE_MAX_TOLERANCE" in worker
+    assert "relative_max > SPHERE_REPLAY_RELATIVE_MAX_TOLERANCE" in auditor
+
+
 def test_sphere_loss_callbacks_match_verl_keyword_contract():
     tree = ast.parse(WORKER.read_text(encoding="utf-8"))
     functions = {

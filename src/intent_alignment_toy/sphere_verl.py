@@ -1006,11 +1006,14 @@ class SphereTrainingWorker(TrainingWorker):
             layer_relative_max = layer_max_abs_difference / max(
                 layer_reference_max_abs, 1e-12
             )
+            # A layer-local relative max is unstable when that layer's own
+            # activation maximum is small. Keep it as an audited diagnostic,
+            # while the hard replay gate uses every layer's relative L2 plus
+            # the aggregate relative L2 and global infinity norm below.
             layer_within_tolerance = (
                 math.isfinite(layer_relative_l2)
                 and math.isfinite(layer_relative_max)
                 and layer_relative_l2 <= SPHERE_REPLAY_RELATIVE_L2_TOLERANCE
-                and layer_relative_max <= SPHERE_REPLAY_RELATIVE_MAX_TOLERANCE
             )
             layer_payload[name] = {
                 "calls": int(layer["calls"]),

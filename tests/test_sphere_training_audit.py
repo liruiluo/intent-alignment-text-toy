@@ -400,6 +400,73 @@ def test_worker_audit_rejects_raw_surrogate_replay_drift():
         )
 
 
+def test_worker_audit_accepts_local_max_outlier_when_layer_l2_and_global_norms_pass():
+    payload = worker_payload()
+    names = [TARGET.replace("layers.31", f"layers.{index}") for index in range(32)]
+    payload["variant"] = "sphere_dense_all_hidden_adaptive_v1"
+    payload["contract"]["layer_mode"] = "all_hidden"
+    payload["targets"] = {"count": len(names), "names": names}
+
+    collection_template = next(iter(payload["passes"]["collection"]["layers"].values()))
+    logical_template = next(
+        iter(payload["passes"]["logical_objective"]["layers"].values())
+    )
+    replay_template = next(iter(payload["passes"]["sphere"]["layers"].values()))
+    gradient_template = next(
+        iter(payload["gradients"]["target_activation_gradients"].values())
+    )
+    payload["passes"]["collection"]["layers"] = {
+        name: dict(collection_template) for name in names
+    }
+    payload["passes"]["logical_objective"]["layers"] = {
+        name: dict(logical_template) for name in names
+    }
+    payload["passes"]["sphere"]["layers"] = {
+        name: dict(replay_template) for name in names
+    }
+    payload["gradients"]["target_activation_gradients"] = {
+        name: dict(gradient_template) for name in names
+    }
+
+    logical = payload["passes"]["logical_objective"]
+    replay = payload["passes"]["sphere"]
+    logical["penalty_sum"] = replay["penalty_sum"] = replay["surrogate_sum"] = 256.0
+    logical["surrogate_dot_sum"] = 384.0
+    logical["surrogate_correction"] = -128.0
+    replay["collection_surrogate_dot_sum"] = replay["raw_surrogate_sum"] = 384.0
+    replay["raw_surrogate_difference"] = 0.0
+    replay["raw_surrogate_relative_difference"] = 0.0
+
+    # One low-amplitude layer has a 6% local infinity-norm ratio, while every
+    # layer's relative L2 and the aggregate L2/infinity norms remain well below
+    # 5%. The local max remains evidence, not a decomposition-sensitive gate.
+    outlier = replay["layers"][names[0]]
+    outlier["feature_difference_l2_norm"] = 1.0
+    outlier["feature_relative_l2_difference"] = 0.01
+    outlier["feature_max_abs_difference"] = 0.12
+    outlier["feature_reference_max_abs"] = 2.0
+    outlier["feature_relative_max_difference"] = 0.06
+    outlier["feature_different_values"] = 1
+    replay["layers"][names[1]]["feature_reference_max_abs"] = 20.0
+
+    aggregate = replay["feature_replay"]
+    aggregate["difference_l2_norm"] = 1.0
+    aggregate["reference_l2_norm"] = 100.0 * (32**0.5)
+    aggregate["relative_l2_difference"] = 1.0 / aggregate["reference_l2_norm"]
+    aggregate["max_abs_difference"] = 0.12
+    aggregate["reference_max_abs"] = 20.0
+    aggregate["relative_max_difference"] = 0.006
+    aggregate["different_values"] = 1
+    aggregate["total_values"] = 32 * 4 * 9216
+
+    summary = validate_worker_evidence(
+        payload,
+        expected_variant="sphere_dense_all_hidden_adaptive_v1",
+        registry_path=REGISTRY,
+    )
+    assert summary["target_count"] == 32
+
+
 def test_worker_audit_rejects_direct_feature_replay_drift():
     payload = worker_payload()
     replay = payload["passes"]["sphere"]

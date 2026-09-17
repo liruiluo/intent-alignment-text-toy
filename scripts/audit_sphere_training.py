@@ -432,10 +432,10 @@ def validate_worker_evidence(
             raise ValueError(f"sphere replay feature value count drifted at {name}")
         if not 0 <= different_values <= total_values:
             raise ValueError(f"sphere replay different-value count drifted at {name}")
-        layer_within_tolerance = (
-            relative_l2 <= SPHERE_REPLAY_RELATIVE_L2_TOLERANCE
-            and relative_max <= SPHERE_REPLAY_RELATIVE_MAX_TOLERANCE
-        )
+        # The layer-local relative maximum is retained as evidence but is not
+        # a stable gate when a layer's own maximum is small. The aggregate
+        # infinity norm is checked below; every layer remains L2-bounded here.
+        layer_within_tolerance = relative_l2 <= SPHERE_REPLAY_RELATIVE_L2_TOLERANCE
         if (
             layer.get("feature_replay_within_tolerance") is not True
             or not layer_within_tolerance
