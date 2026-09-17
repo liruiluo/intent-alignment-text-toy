@@ -1287,9 +1287,10 @@ class SphereTrainingWorker(TrainingWorker):
             raise RuntimeError(f"SPHERE evidence gate failed: {payload['checks']}")
 
     def _add_global_metric(self, output: dict, name: str, value: float) -> None:
-        output["metrics"][name] = [
-            Metric(value=value, aggregation=AggregationType.MEAN)
-        ]
+        # veRL's postprocess path returns singleton ``Metric`` objects directly;
+        # wrapping one in a list makes ``reduce_metrics`` call ``np.mean`` on
+        # the object and fail after the optimizer step.
+        output["metrics"][name] = Metric(value=value, aggregation=AggregationType.MEAN)
 
     def train_batch(self, data: TensorDict) -> TensorDict:
         if self._optimizer_steps != 0:

@@ -122,6 +122,13 @@ def test_sphere_packed_mask_uses_per_sequence_causal_alignment():
     assert "attention_mask[:, :prompt_width].sum(dim=1)" in worker
 
 
+def test_global_sphere_metrics_follow_verl_singleton_metric_contract():
+    worker = WORKER.read_text(encoding="utf-8")
+
+    assert 'output["metrics"][name] = Metric(' in worker
+    assert 'output["metrics"][name] = [' not in worker
+
+
 def test_sphere_loss_callbacks_match_verl_keyword_contract():
     tree = ast.parse(WORKER.read_text(encoding="utf-8"))
     functions = {
