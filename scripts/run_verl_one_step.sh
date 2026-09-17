@@ -27,7 +27,7 @@ readonly EXPECTED_MODEL_INDEX_SHA256=cf3f798ee02ba45f9622aa8892a47369ab667d0afbf
 readonly EXPECTED_MODEL_WEIGHT_1_SHA256=26a93f066e1916adb13453dae5a0c707c0fbc71299ed98779571a907b8e74c61
 readonly EXPECTED_MODEL_WEIGHT_2_SHA256=cb544bd9bfae93dc59b0f22b292f5933573854a7f9b97835c67060d7d910e188
 
-mkdir -p "$RUN_DIR" "$RUN_DIR/rollouts"
+mkdir -p "$RUN_DIR" "$RUN_DIR/rollouts" "$RUN_DIR/runtime/hydra"
 [[ -f "$VERL_ROOT/verl/trainer/main_ppo.py" ]]
 case "$TRAIN_MODULE" in
   verl.trainer.main_ppo|intent_alignment_toy.sphere_main) ;;
@@ -163,6 +163,10 @@ export RAY_TMPDIR="$ray_tmp_base/iatoy-ray-${run_dir_sha256:0:12}"
 export TVM_FFI_CACHE_DIR="${TVM_FFI_CACHE_DIR:-$RAY_TMPDIR/tvm-ffi}"
 export TORCH_EXTENSIONS_DIR="${TORCH_EXTENSIONS_DIR:-$RAY_TMPDIR/torch-extensions}"
 mkdir -p "$RAY_TMPDIR" "$TVM_FFI_CACHE_DIR" "$TORCH_EXTENSIONS_DIR"
+
+# Keep Hydra's generated outputs inside the run directory so the immutable
+# source snapshot remains byte-for-byte identical across sequential arms.
+cd "$RUN_DIR/runtime/hydra"
 
 "$PYTHON_BIN" -m "$TRAIN_MODULE" \
   algorithm.adv_estimator=grpo \

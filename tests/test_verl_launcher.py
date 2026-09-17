@@ -59,3 +59,12 @@ def test_actor_compile_override_reaches_the_fsdp_engine():
         "actor_rollout_ref.actor.fsdp_config.use_torch_compile="
         '"$ACTOR_USE_TORCH_COMPILE"' in script
     )
+
+
+def test_hydra_outputs_cannot_mutate_the_source_snapshot():
+    script = LAUNCHER.read_text(encoding="utf-8")
+
+    invocation = script.index('"$PYTHON_BIN" -m "$TRAIN_MODULE"')
+    chdir = script.index('cd "$RUN_DIR/runtime/hydra"')
+    assert chdir < invocation
+    assert 'mkdir -p "$RUN_DIR" "$RUN_DIR/rollouts" "$RUN_DIR/runtime/hydra"' in script
