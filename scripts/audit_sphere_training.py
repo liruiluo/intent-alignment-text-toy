@@ -24,6 +24,7 @@ from typing import Any
 from intent_alignment_toy.sphere_contract import (
     SPHERE_REPLAY_RELATIVE_L2_TOLERANCE,
     SPHERE_REPLAY_RELATIVE_MAX_TOLERANCE,
+    SPHERE_REPLAY_SURROGATE_RELATIVE_TOLERANCE,
     load_sphere_variant,
 )
 
@@ -353,6 +354,18 @@ def validate_worker_evidence(
         rel_tol=1e-9,
         abs_tol=1e-12,
     )
+    _require_close(
+        phase.get("raw_surrogate_relative_tolerance"),
+        SPHERE_REPLAY_SURROGATE_RELATIVE_TOLERANCE,
+        "sphere replay raw surrogate tolerance",
+        rel_tol=0.0,
+        abs_tol=0.0,
+    )
+    if (
+        phase.get("raw_surrogate_within_tolerance") is not True
+        or raw_relative_difference > SPHERE_REPLAY_SURROGATE_RELATIVE_TOLERANCE
+    ):
+        raise ValueError("sphere replay raw surrogate drift exceeds tolerance")
 
     layers = phase.get("layers", {})
     if list(layers) != names:
@@ -843,6 +856,7 @@ def validate_worker_evidence(
         "ratio_formula_matches",
         "sphere_replay_matches_logical_penalty",
         "sphere_replay_features_within_tolerance",
+        "sphere_replay_surrogate_within_tolerance",
         "all_replay_microbatch_identities_match",
         "optimizer_gradient_assembly_finite",
         "full_tensor_assembly_exact",
@@ -858,6 +872,7 @@ def validate_worker_evidence(
         raise ValueError(f"SPHERE worker checks failed: {checks}")
     for check_name in (
         "sphere_replay_features_within_tolerance",
+        "sphere_replay_surrogate_within_tolerance",
         "optimizer_gradient_assembly_finite",
         "full_tensor_assembly_exact",
         "postcast_regularizer_contribution_nonzero",

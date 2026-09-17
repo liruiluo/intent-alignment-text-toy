@@ -44,8 +44,10 @@ penalty 和闭式 `dL/dPhi`；随后按原 microbatch 顺序重放一个线性 s
 `dL/dPhi` 传回模型参数。每次重放都核对 token/mask identity，所以 physical
 microbatch 只承担显存分块，不改变 SPHERE 目标。SPHERE replay 恢复 PPO collection
 开始前的 Torch CPU/CUDA RNG 状态。worker 直接逐元素比较 collection 与 replay 的
-`Phi`，要求整体相对 L2 差异不超过 `1e-5`、相对最大差异不超过 `1e-3`；大规模
-CUDA dot reduction 的末位差异只作为诊断值，不再冒充特征一致性证明。
+`Phi`。Qwen3.5 的 BF16 hybrid-attention kernel 在重复 forward 中并非 bitwise
+确定，因此冻结数值门为整体与逐层相对 L2 / 最大差异均不超过 `5e-2`；同时直接约束
+与 SPHERE feature gradient 的原始 surrogate 内积相对偏差不超过 `1e-3`。这两个门
+分别防止 activation replay 明显漂移和实际正则方向漂移。
 
 ## 自适应正则系数
 

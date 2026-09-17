@@ -13,11 +13,13 @@ from typing import Any
 _LAYER_PATTERN = re.compile(r"^model\.language_model\.layers\.(\d+)\.mlp\.down_proj$")
 _FSDP_WRAPPER_SEGMENT = "_fsdp_wrapped_module"
 
-# Replay runs through the same parameters and restored Torch RNG state before
-# any optimizer update. Validate the activations themselves rather than a
-# large CUDA reduction, whose last bits can depend on reduction scheduling.
-SPHERE_REPLAY_RELATIVE_L2_TOLERANCE = 1e-5
-SPHERE_REPLAY_RELATIVE_MAX_TOLERANCE = 1e-3
+# Qwen3.5 uses BF16 hybrid-attention kernels whose repeated forward passes are
+# not bitwise deterministic even after restoring every Torch RNG.  Bound the
+# full activation drift and, more importantly, the resulting SPHERE surrogate
+# drift.  These are numerical-replay tolerances, not optimization tolerances.
+SPHERE_REPLAY_RELATIVE_L2_TOLERANCE = 5e-2
+SPHERE_REPLAY_RELATIVE_MAX_TOLERANCE = 5e-2
+SPHERE_REPLAY_SURROGATE_RELATIVE_TOLERANCE = 1e-3
 
 
 @dataclass(frozen=True)

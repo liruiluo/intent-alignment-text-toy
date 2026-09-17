@@ -29,6 +29,7 @@ from verl.workers.engine_workers import ActorRolloutRefWorker, TrainingWorker
 from intent_alignment_toy.sphere_contract import (
     SPHERE_REPLAY_RELATIVE_L2_TOLERANCE,
     SPHERE_REPLAY_RELATIVE_MAX_TOLERANCE,
+    SPHERE_REPLAY_SURROGATE_RELATIVE_TOLERANCE,
     SphereVariant,
     build_packed_response_predictor_mask,
     load_sphere_variant,
@@ -1061,6 +1062,14 @@ class SphereTrainingWorker(TrainingWorker):
             "raw_surrogate_sum": raw_surrogate,
             "raw_surrogate_difference": raw_difference,
             "raw_surrogate_relative_difference": raw_relative_difference,
+            "raw_surrogate_relative_tolerance": (
+                SPHERE_REPLAY_SURROGATE_RELATIVE_TOLERANCE
+            ),
+            "raw_surrogate_within_tolerance": (
+                math.isfinite(raw_relative_difference)
+                and raw_relative_difference
+                <= SPHERE_REPLAY_SURROGATE_RELATIVE_TOLERANCE
+            ),
             "surrogate_sum": surrogate,
             "surrogate_matches_penalty": math.isclose(
                 surrogate, penalty, rel_tol=5e-4, abs_tol=1e-2
@@ -1215,6 +1224,9 @@ class SphereTrainingWorker(TrainingWorker):
                 "sphere_replay_features_within_tolerance": sphere_replay[
                     "feature_replay"
                 ]["within_tolerance"],
+                "sphere_replay_surrogate_within_tolerance": sphere_replay[
+                    "raw_surrogate_within_tolerance"
+                ],
                 "all_replay_microbatch_identities_match": (
                     sphere_replay["identity_matches"] == logical["microbatches"]
                 ),

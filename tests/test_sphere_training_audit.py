@@ -68,6 +68,8 @@ def worker_payload():
         "raw_surrogate_sum": 12.0,
         "raw_surrogate_difference": 0.0,
         "raw_surrogate_relative_difference": 0.0,
+        "raw_surrogate_relative_tolerance": 1e-3,
+        "raw_surrogate_within_tolerance": True,
         "surrogate_sum": 8.0,
         "surrogate_matches_penalty": True,
         "feature_replay": {
@@ -79,8 +81,8 @@ def worker_payload():
             "relative_max_difference": 0.0,
             "different_values": 0,
             "total_values": 4 * 9216,
-            "relative_l2_tolerance": 1e-5,
-            "relative_max_tolerance": 1e-3,
+            "relative_l2_tolerance": 5e-2,
+            "relative_max_tolerance": 5e-2,
             "within_tolerance": True,
         },
         "layers": {TARGET: replay_layer},
@@ -93,6 +95,7 @@ def worker_payload():
         "ratio_formula_matches": True,
         "sphere_replay_matches_logical_penalty": True,
         "sphere_replay_features_within_tolerance": True,
+        "sphere_replay_surrogate_within_tolerance": True,
         "all_replay_microbatch_identities_match": True,
         "optimizer_gradient_assembly_finite": True,
         "full_tensor_assembly_exact": True,
@@ -381,15 +384,31 @@ def test_worker_audit_rejects_fabricated_lambda():
         )
 
 
+def test_worker_audit_rejects_raw_surrogate_replay_drift():
+    payload = worker_payload()
+    replay = payload["passes"]["sphere"]
+    replay["raw_surrogate_sum"] = 12.024
+    replay["raw_surrogate_difference"] = 0.024
+    replay["raw_surrogate_relative_difference"] = 0.002
+    replay["raw_surrogate_within_tolerance"] = False
+
+    with pytest.raises(ValueError, match="raw surrogate drift exceeds tolerance"):
+        validate_worker_evidence(
+            payload,
+            expected_variant="sphere_dense_last_adaptive_v1",
+            registry_path=REGISTRY,
+        )
+
+
 def test_worker_audit_rejects_direct_feature_replay_drift():
     payload = worker_payload()
     replay = payload["passes"]["sphere"]
     layer = replay["layers"][TARGET]
-    layer["feature_difference_l2_norm"] = 0.01
-    layer["feature_relative_l2_difference"] = 1e-4
+    layer["feature_difference_l2_norm"] = 10.0
+    layer["feature_relative_l2_difference"] = 0.1
     feature_replay = replay["feature_replay"]
-    feature_replay["difference_l2_norm"] = 0.01
-    feature_replay["relative_l2_difference"] = 1e-4
+    feature_replay["difference_l2_norm"] = 10.0
+    feature_replay["relative_l2_difference"] = 0.1
 
     with pytest.raises(ValueError, match="feature drift exceeds tolerance"):
         validate_worker_evidence(
