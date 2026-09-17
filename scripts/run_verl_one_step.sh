@@ -10,6 +10,9 @@ set -Eeuo pipefail
 REPO_ROOT=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
 AGENT_LOOP_CONFIG="$REPO_ROOT/configs/intent_alignment_agent_loop.yaml"
 PYTHON_BIN=${PYTHON_BIN:-python3}
+TRAIN_MODULE=${TRAIN_MODULE:-verl.trainer.main_ppo}
+ACTOR_GRADIENT_CHECKPOINTING=${ACTOR_GRADIENT_CHECKPOINTING:-true}
+ACTOR_USE_TORCH_COMPILE=${ACTOR_USE_TORCH_COMPILE:-true}
 readonly TRAIN_BATCH_SIZE=400
 readonly ROLLOUT_N=2
 readonly PPO_MINI_BATCH_SIZE=400
@@ -26,6 +29,14 @@ readonly EXPECTED_MODEL_WEIGHT_2_SHA256=cb544bd9bfae93dc59b0f22b292f5933573854a7
 
 mkdir -p "$RUN_DIR" "$RUN_DIR/rollouts"
 [[ -f "$VERL_ROOT/verl/trainer/main_ppo.py" ]]
+case "$TRAIN_MODULE" in
+  verl.trainer.main_ppo|intent_alignment_toy.sphere_main) ;;
+  *) echo "unsupported TRAIN_MODULE: $TRAIN_MODULE" >&2; exit 64 ;;
+esac
+case "$ACTOR_GRADIENT_CHECKPOINTING:$ACTOR_USE_TORCH_COMPILE" in
+  true:true|true:false|false:true|false:false) ;;
+  *) echo "actor boolean overrides must be true/false" >&2; exit 64 ;;
+esac
 [[ -f "$MODEL_PATH/config.json" ]]
 [[ -f "$TRAIN_PARQUET" ]]
 [[ -f "$TEST_PARQUET" ]]
@@ -84,6 +95,11 @@ check_sha256 "$MODEL_PATH/model.safetensors-00002-of-00002.safetensors" "$EXPECT
 export PATH="$(dirname "$PYTHON_BIN"):$CUDA_HOME/bin:$PATH"
 python_prefix=$("$PYTHON_BIN" -c 'import sys; print(sys.prefix)')
 python_minor=$("$PYTHON_BIN" -c 'import sys; print(f"python{sys.version_info.major}.{sys.version_info.minor}")')
+python_header="$python_prefix/include/$python_minor/Python.h"
+[[ -f "$python_header" ]] || {
+  echo "Python runtime header required by Triton is missing: $python_header" >&2
+  exit 65
+}
 runtime_cuda_lib="$python_prefix/lib/$python_minor/site-packages/nvidia/cu13/lib"
 [[ -d "$runtime_cuda_lib" ]] || {
   echo "Python runtime does not provide CUDA 13 libraries: $runtime_cuda_lib" >&2
@@ -138,12 +154,17 @@ export WANDB_MODE=disabled
 # so the final AF_UNIX socket path stays below Linux's 107-byte limit even when
 # RUN_DIR is a long shared-storage experiment path.
 run_dir_sha256=$(printf '%s' "$RUN_DIR" | sha256sum | awk '{print $1}')
-export RAY_TMPDIR="/tmp/iatoy-ray-${run_dir_sha256:0:12}"
+ray_tmp_base=${IATOY_RAY_TMP_BASE:-/tmp}
+[[ -d "$ray_tmp_base" && -w "$ray_tmp_base" ]] || {
+  echo "Ray temp base must be an existing writable directory: $ray_tmp_base" >&2
+  exit 65
+}
+export RAY_TMPDIR="$ray_tmp_base/iatoy-ray-${run_dir_sha256:0:12}"
 export TVM_FFI_CACHE_DIR="${TVM_FFI_CACHE_DIR:-$RAY_TMPDIR/tvm-ffi}"
 export TORCH_EXTENSIONS_DIR="${TORCH_EXTENSIONS_DIR:-$RAY_TMPDIR/torch-extensions}"
 mkdir -p "$RAY_TMPDIR" "$TVM_FFI_CACHE_DIR" "$TORCH_EXTENSIONS_DIR"
 
-"$PYTHON_BIN" -m verl.trainer.main_ppo \
+"$PYTHON_BIN" -m "$TRAIN_MODULE" \
   algorithm.adv_estimator=grpo \
   algorithm.use_kl_in_reward=false \
   data.train_files="$TRAIN_PARQUET" \
@@ -157,7 +178,7 @@ mkdir -p "$RAY_TMPDIR" "$TVM_FFI_CACHE_DIR" "$TORCH_EXTENSIONS_DIR"
   ++data.apply_chat_template_kwargs.enable_thinking=false \
   actor_rollout_ref.model.path="$MODEL_PATH" \
   actor_rollout_ref.model.use_remove_padding=true \
-  actor_rollout_ref.model.enable_gradient_checkpointing=true \
+  actor_rollout_ref.model.enable_gradient_checkpointing="$ACTOR_GRADIENT_CHECKPOINTING" \
   actor_rollout_ref.actor.optim.lr="$ACTOR_LR" \
   actor_rollout_ref.actor.ppo_epochs=1 \
   actor_rollout_ref.actor.ppo_mini_batch_size="$PPO_MINI_BATCH_SIZE" \
@@ -165,6 +186,8 @@ mkdir -p "$RAY_TMPDIR" "$TVM_FFI_CACHE_DIR" "$TORCH_EXTENSIONS_DIR"
   actor_rollout_ref.actor.use_dynamic_bsz=false \
   actor_rollout_ref.actor.use_kl_loss=false \
   actor_rollout_ref.actor.entropy_coeff=0 \
+  actor_rollout_ref.actor.use_torch_compile="$ACTOR_USE_TORCH_COMPILE" \
+  actor_rollout_ref.actor.fsdp_config.use_torch_compile="$ACTOR_USE_TORCH_COMPILE" \
   actor_rollout_ref.actor.fsdp_config.param_offload=false \
   actor_rollout_ref.actor.fsdp_config.optimizer_offload=false \
   actor_rollout_ref.actor.checkpoint.save_contents='[model,optimizer,extra,hf_model]' \

@@ -1,0 +1,34 @@
+{
+  "schema": "intent_alignment_sphere_variants_v1",
+  "paper": {
+    "title": "SPHERE: Mitigating the Loss of Spectral Plasticity in Mixture-of-Experts for Deep Reinforcement Learning",
+    "arxiv": "2605.04712",
+    "official_code_commit": "ea6f6159d80486edfcc6f29cb3909dc377630629"
+  },
+  "common": {
+    "coefficient_mode": "gradient_norm_ratio",
+    "rho": 0.001,
+    "epsilon": 1e-08,
+    "feature_site": "mlp.down_proj.input",
+    "token_selection": "shifted_ppo_loss_mask",
+    "layer_aggregation": "sum",
+    "expected_hidden_layers": 32
+  },
+  "variants": {
+    "sphere_dense_last_adaptive_v1": {
+      "layer_mode": "last",
+      "target_scale_mode": "adaptive_trace",
+      "fixed_alpha": null
+    },
+    "sphere_dense_all_hidden_adaptive_v1": {
+      "layer_mode": "all_hidden",
+      "target_scale_mode": "adaptive_trace",
+      "fixed_alpha": null
+    },
+    "sphere_dense_last_fixed_alpha_v1": {
+      "layer_mode": "last",
+      "target_scale_mode": "fixed",
+      "fixed_alpha": 1.0
+    }
+  }
+}
