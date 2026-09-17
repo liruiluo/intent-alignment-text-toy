@@ -1,0 +1,89 @@
+{
+  "algorithm": {
+    "actor_lr": 1e-06,
+    "backward_passes": {
+      "combined": 0,
+      "ppo": 1,
+      "sphere": 1
+    },
+    "base": "GRPO",
+    "full_tensor_postcast_assembly_check": true,
+    "gradient_checkpointing": false,
+    "logical_minibatch_exact_penalty": true,
+    "optimizer_gradient_assembly": "explicit_ppo_plus_lambda_sphere",
+    "ppo_epochs": 1,
+    "ppo_micro_batch_size_per_gpu": 4,
+    "rho": 0.001,
+    "rollout_n": 2,
+    "sphere_variant": "sphere_dense_last_fixed_alpha_v1",
+    "thinking": false,
+    "torch_compile": false,
+    "train_batch_size": 400,
+    "trajectory_count": 800
+  },
+  "constraints": {
+    "do_not_release_allocation": true,
+    "no_intermediate_evaluation": true,
+    "no_new_allocation": true,
+    "restore_holder_after_run": true
+  },
+  "created_at_utc": "2026-09-17T09:02:17.881318+00:00",
+  "data": {
+    "path": "frozen train400/test100 data snapshot",
+    "test_jsonl_sha256": "b2f7560c4466949136bec09bd2e8532a27def45696c5eeed3b4fcc99de2c1675",
+    "test_parquet_sha256": "455a4c17c370bf40802a282215f69c71a5d21326ad185375211099bd6fe68730",
+    "train_jsonl_sha256": "c7632a967e4e6ed14ebae3d87ad1f43ecab2f0da66c70a3ea11659746688a164",
+    "train_parquet_sha256": "4ab5bfa4f55f073617795c403a10a1b45310d136691ea5dff0377a58cb991ae1"
+  },
+  "evaluation": {
+    "baseline_reused_not_regenerated": true,
+    "baseline_sha256": "f3b5b104315ba1b1098d895218779fa5a246ed9100d15eb6ac0d6de637cd968f",
+    "decoding": "greedy",
+    "max_new_tokens": 8,
+    "success_threshold": 0.95,
+    "test_count": 100,
+    "test_generation_only_after_training_endpoint": true
+  },
+  "hardware": {
+    "allocation_must_be_retained": true,
+    "gpu": "NVIDIA B300 SXM6 AC",
+    "gpu_count": 1,
+    "new_allocation_requested": false,
+    "platform_task": "REDACTED_EXISTING_SINGLE_GPU_ALLOCATION",
+    "pod": "REDACTED_SINGLE_GPU_RUNNER"
+  },
+  "launcher": {
+    "path": "formal-launch.sh",
+    "sha256": "37316ab55a45d7d070490aedd0ec8040442746bf905874534d2b6e5cf7e3b6de"
+  },
+  "model": {
+    "config_sha256": "ddc63e1c717afa86c865bb5e01313d89d72bb53b97ad4a8a03ba8510c0621670",
+    "index_sha256": "cf3f798ee02ba45f9622aa8892a47369ab667d0afbf154ee7c2212de42e6302d",
+    "path": "Qwen3.5-4B frozen base checkpoint",
+    "weight_shas": [
+      "26a93f066e1916adb13453dae5a0c707c0fbc71299ed98779571a907b8e74c61",
+      "cb544bd9bfae93dc59b0f22b292f5933573854a7f9b97835c67060d7d910e188"
+    ]
+  },
+  "objective": "Qwen3.5-4B dense SPHERE, 400 train tasks x 2 rollouts, exactly one optimizer update, then frozen test100",
+  "run_id": "iatoy-sphere-last-fixed-alpha-qwen35-4b-one-step-20260917-run4",
+  "run_nonce_sha256": "4974ddceaf37b1c6ac767a3158493b01382664a751db18a2b689b81e0411e1a8",
+  "runtime": {
+    "cuda_home": "CUDA 13 toolkit",
+    "python": "isolated Python runtime",
+    "sglang": "0.5.12",
+    "torch": "2.11.0+cu130",
+    "transfer_queue": "0.1.8",
+    "transformers": "5.5.3",
+    "verl_commit": "483b8a009ba3a97563edee3a19887e4862b8094a",
+    "verl_path": "veRL v0.9.0 source tree"
+  },
+  "schema": "intent_alignment_dense_sphere_run_contract_v3",
+  "source": {
+    "base_commit": "3c4c9c69d3bab19ebc3a2c1cb2227722ee4bbd38",
+    "id": "sphere-339416ae642c4e323059",
+    "manifest_sha256": "339416ae642c4e323059f69bf6ec7ca585724eb826cc9adc3526fd0061859c45",
+    "path": "source snapshot sphere-339416ae642c4e323059"
+  },
+  "variant": "sphere_dense_last_fixed_alpha_v1"
+}

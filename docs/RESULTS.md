@@ -1,5 +1,12 @@
 # Qwen3.5-4B 单卡 veRL 单步训练结果
 
+## 最新补充：Dense SPHERE 三臂（2026-09-17）
+
+在相同 400/100 数据、Qwen3.5-4B、veRL v0.9.0 和单张现有 B300 上，SPHERE 最后一层自适应 α、全部 32 层自适应 α、最后一层固定 `α=1` 三个实验臂均完成恰好 1 个 optimizer/global update，训练后均为 **100/100**。完整协议与轻量证据见 [`SPHERE_ONE_STEP_PROTOCOL.md`](SPHERE_ONE_STEP_PROTOCOL.md) 和 [`../results/qwen3.5-4b-sphere-one-step-v1/`](../results/qwen3.5-4b-sphere-one-step-v1/)。
+
+这不改变下文普通 GRPO 基线的结论：训练前已经满分，因此结果证明实现执行、参数更新和能力保持，不证明成功率提升。
+
+
 ## 结论
 
 - 训练前冻结 test100：**100/100（100%）**。

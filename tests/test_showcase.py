@@ -117,3 +117,36 @@ def test_showcase_is_a_single_private_path_free_offline_html():
     assert "HTML 不在浏览器中运行模型" in html
     assert 'if (tasks.length !== 100)' in html
     assert 'tasks.filter(task => task.success).length !== 100' in html
+
+SPHERE_RESULT_DIR = ROOT / "results" / "qwen3.5-4b-sphere-one-step-v1"
+
+
+def embedded_sphere_evidence() -> dict:
+    html = SHOWCASE.read_text(encoding="utf-8")
+    match = re.search(
+        r'<script id="sphereEvidenceData" type="application/json">(.*?)</script>',
+        html,
+        flags=re.DOTALL,
+    )
+    assert match, "standalone showcase must embed its SPHERE evidence payload"
+    return json.loads(match.group(1))
+
+
+def test_showcase_embeds_exact_three_arm_sphere_summary():
+    embedded = embedded_sphere_evidence()
+    summary = json.loads(
+        (SPHERE_RESULT_DIR / "summary.json").read_text(encoding="utf-8")
+    )
+    assert embedded == summary
+    assert embedded["all_arms_passed"] is True
+    assert len(embedded["arms"]) == 3
+    assert all(arm["optimizer_updates_actual"] == 1 for arm in embedded["arms"])
+    assert all(arm["after_successes"] == 100 for arm in embedded["arms"])
+
+
+def test_showcase_surfaces_three_sphere_arms_for_windows_demo():
+    html = SHOWCASE.read_text(encoding="utf-8")
+    assert "3 / 3 达到 ≥95%" in html
+    assert "All hidden expert layers" in html
+    assert "每臂恰好 1 update" in html
+    assert "SPHERE 三臂摘要 SHA" in html

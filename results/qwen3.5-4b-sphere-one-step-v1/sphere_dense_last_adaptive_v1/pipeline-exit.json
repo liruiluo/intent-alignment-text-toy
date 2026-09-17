@@ -1,0 +1,11 @@
+{
+  "audit_source_commit": "7e5125b71ddb57a191c2159a37aeeaab220fc43b",
+  "exit_code": 0,
+  "finished_at": "2026-09-17T16:16:59+0800",
+  "initial_exit_preserved": "logs/pipeline-exit.pre-recovery.json",
+  "recovery": "post_training_auditor_quoted_yaml_key_fix",
+  "recovery_exit": "logs/pipeline-recovery-exit.json",
+  "run_id": "iatoy-sphere-last-adaptive-qwen35-4b-one-step-20260917-run3",
+  "training_reexecuted": false,
+  "variant": "sphere_dense_last_adaptive_v1"
+}

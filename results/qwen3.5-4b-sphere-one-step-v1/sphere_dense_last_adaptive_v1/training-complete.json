@@ -1,0 +1,21 @@
+{
+  "artifacts": {
+    "checkpoint_inventory_sha256": "5ba593d4ef4edb0845094a0bf70edfbc38b31b50f7026298dd4ddc89439a1e0c",
+    "parameter_evidence_sha256": "c3f1d61a40c1af7fe0360cbf07e51013505be818777c24f39133e2528ecaf8fc",
+    "resolved_config_sha256": "e152361f1f4f015279bf99b67ecb59552fa6abfc4677f7464e5d6e1563c03be0",
+    "rollout_ledger_sha256": "e29af696f052f55bd037044efef1e78100580f2315ac38da237ed321a2a41367",
+    "run_contract_sha256": "086707f3d9130cacd3d0f0da9f6e31257ca0c5c6bc36dcf3a0d65526d27edc0d",
+    "run_nonce_sha256": "ab6681f658d16a6ac1ef76978ef03e10f6fb9dbe6a8ba5f95630a0586a7ab1b7",
+    "sphere_registry_sha256": "8a9f84df67472efde242eed74116c6f8d0737d87385626f70843df22abb172bb",
+    "training_evidence_sha256": "155bf31bee6fe1523a6b008e6e067c10119085fb73376b6102b714903c345cfe",
+    "worker_evidence_sha256": "f02a356ac3ff376a978a249a0c81f09b23612d2f978dfd2e6ae7298133474949"
+  },
+  "completed_at_utc": "2026-09-17T08:14:23.005616+00:00",
+  "effective_bfloat16_weights_changed": true,
+  "global_step": 1,
+  "optimizer_updates_actual": 1,
+  "run_id": "iatoy-sphere-last-adaptive-qwen35-4b-one-step-20260917-run3",
+  "schema": "intent_alignment_dense_sphere_training_complete_v3",
+  "variant": "sphere_dense_last_adaptive_v1",
+  "weights_changed": true
+}

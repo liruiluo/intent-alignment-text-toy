@@ -10,6 +10,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_RESULTS = ROOT / "results" / "qwen3.5-4b-verl-one-step-v2"
+DEFAULT_SPHERE_RESULTS = ROOT / "results" / "qwen3.5-4b-sphere-one-step-v1"
 DEFAULT_HTML = ROOT / "showcase" / "intent-alignment-showcase.html"
 
 
@@ -20,10 +21,14 @@ def load(path: Path) -> dict:
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--result-dir", type=Path, default=DEFAULT_RESULTS)
+    parser.add_argument(
+        "--sphere-result-dir", type=Path, default=DEFAULT_SPHERE_RESULTS
+    )
     parser.add_argument("--html", type=Path, default=DEFAULT_HTML)
     args = parser.parse_args()
 
     result_dir = args.result_dir.resolve()
+    sphere_result_dir = args.sphere_result_dir.resolve()
     html_path = args.html.resolve()
     before = load(result_dir / "before-test100.json")
     after = load(result_dir / "after-test100.json")
@@ -31,6 +36,8 @@ def main() -> None:
     training = load(result_dir / "training-evidence.json")
     parameter = load(result_dir / "parameter-evidence.json")
     manifest = load(result_dir / "artifact-manifest.json")
+    sphere_summary = load(sphere_result_dir / "summary.json")
+    sphere_manifest = load(sphere_result_dir / "publication-manifest.json")
 
     source_hashes = manifest["source_artifact_sha256"]
     published_hashes = manifest["published_artifact_sha256"]
@@ -100,13 +107,29 @@ def main() -> None:
     if replacements != 1:
         raise ValueError("could not locate unique embedded evidence block")
 
+    sphere_payload = json.dumps(
+        sphere_summary, ensure_ascii=False, separators=(",", ":")
+    )
+    if "</script>" in sphere_payload.lower():
+        raise ValueError("embedded SPHERE evidence contains a closing script tag")
+    html, replacements = re.subn(
+        r'(<script id="sphereEvidenceData" type="application/json">).*?(</script>)',
+        lambda match: match.group(1) + sphere_payload + match.group(2),
+        html,
+        count=1,
+        flags=re.DOTALL,
+    )
+    if replacements != 1:
+        raise ValueError("could not locate unique embedded SPHERE evidence block")
+
+    sphere_summary_sha = sphere_manifest["artifacts"]["summary.json"]
     footer = (
         "冻结协议 <code>intent-alignment-text-toy-v2-agent-loop</code> · "
         f"训练源码 <code>{manifest['source_commit'][:8]}</code> · "
-        "训练后公开文件 SHA "
+        "GRPO 公开文件 SHA "
         f"<code>{published_hashes['after-test100.json'][:8]}</code> · "
-        "原始文件 SHA "
-        f"<code>{source_hashes['after-test100.json'][:8]}</code>"
+        "SPHERE 三臂摘要 SHA "
+        f"<code>{sphere_summary_sha[:8]}</code>"
     )
     html, replacements = re.subn(
         r"冻结协议 <code>.*?</code> · 训练源码 <code>.*?</code> · .*?</span>",

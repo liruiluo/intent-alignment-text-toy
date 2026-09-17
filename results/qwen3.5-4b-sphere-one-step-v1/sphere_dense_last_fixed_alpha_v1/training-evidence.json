@@ -1,0 +1,107 @@
+{
+  "artifacts": {
+    "checkpoint_inventory_sha256": "8a8ccaedd8321aebbef25b4066ef71986424409705e34eb7879579b77d03c1a7",
+    "parameter_evidence_sha256": "2e2f1a1c28939b2133d3245b233754b8df6fc486f02041b594099edc696a9c0a",
+    "resolved_config_sha256": "e3181ff7f1849c104394ff8ca7d997525b3642e1c99c683984f9e1ea6dae87a5",
+    "rollout_ledger_sha256": "45cced35397e9d82483889dee193724209a071a25454758cf01b4f24ff22b4d7",
+    "run_contract_sha256": "55a2e49ae5d4d5c095f471dbc381ad640dbe6234486b682412b698fc4e7e8fc7",
+    "run_nonce_sha256": "4974ddceaf37b1c6ac767a3158493b01382664a751db18a2b689b81e0411e1a8",
+    "sphere_registry_sha256": "8a9f84df67472efde242eed74116c6f8d0737d87385626f70843df22abb172bb",
+    "worker_evidence_sha256": "a587e6879b86c5c5542471ea8ddd501633c85bbe776a97b9bcd10e6a4f1a18c6"
+  },
+  "created_at_utc": "2026-09-17T09:25:59.901477+00:00",
+  "global_step": 1,
+  "grpo_group_count": 400,
+  "mixed_reward_group_count": 67,
+  "optimizer_updates_actual": 1,
+  "parameter_evidence": {
+    "changed_probe_count": 6,
+    "effective_bfloat16_weights_changed": true,
+    "weights_changed": true
+  },
+  "resolved_config": {
+    "actor_rollout_ref.actor.fsdp_config.dtype": "bfloat16",
+    "actor_rollout_ref.actor.fsdp_config.model_dtype": "fp32",
+    "actor_rollout_ref.actor.fsdp_config.strategy": "fsdp",
+    "actor_rollout_ref.actor.fsdp_config.use_orig_params": "false",
+    "actor_rollout_ref.actor.fsdp_config.use_torch_compile": "false",
+    "actor_rollout_ref.actor.ppo_epochs": "1",
+    "actor_rollout_ref.actor.ppo_micro_batch_size_per_gpu": "4",
+    "actor_rollout_ref.actor.ppo_mini_batch_size": "400",
+    "actor_rollout_ref.actor.strategy": "fsdp",
+    "actor_rollout_ref.actor.use_torch_compile": "false",
+    "actor_rollout_ref.model.enable_gradient_checkpointing": "false",
+    "actor_rollout_ref.rollout.n": "2",
+    "data.train_batch_size": "400",
+    "model_engine": "dp",
+    "trainer.resume_mode": "disable",
+    "trainer.save_freq": "1",
+    "trainer.total_training_steps": "1"
+  },
+  "reward_values": [
+    0.0,
+    1.0
+  ],
+  "rollouts_per_group": 2,
+  "run_contract_algorithm": {
+    "actor_lr": 1e-06,
+    "backward_passes": {
+      "combined": 0,
+      "ppo": 1,
+      "sphere": 1
+    },
+    "base": "GRPO",
+    "full_tensor_postcast_assembly_check": true,
+    "gradient_checkpointing": false,
+    "logical_minibatch_exact_penalty": true,
+    "optimizer_gradient_assembly": "explicit_ppo_plus_lambda_sphere",
+    "ppo_epochs": 1,
+    "ppo_micro_batch_size_per_gpu": 4,
+    "rho": 0.001,
+    "rollout_n": 2,
+    "sphere_variant": "sphere_dense_last_fixed_alpha_v1",
+    "thinking": false,
+    "torch_compile": false,
+    "train_batch_size": 400,
+    "trajectory_count": 800
+  },
+  "run_id": "iatoy-sphere-last-fixed-alpha-qwen35-4b-one-step-20260917-run4",
+  "schema": "intent_alignment_dense_sphere_training_evidence_v3",
+  "trajectory_count": 800,
+  "variant": "sphere_dense_last_fixed_alpha_v1",
+  "worker_evidence": {
+    "assembled_optimizer_gradient_l2_norm": 7.010444164276123,
+    "full_tensor_assembly_residual_l2_norm": 0.0,
+    "full_tensor_assembly_residual_max_abs": 0.0,
+    "lambda": 1.1377191226817673e-11,
+    "logical_minibatch_microbatches": 200,
+    "logical_minibatch_penalty": 5447464.5,
+    "logical_minibatch_token_rows": 8800,
+    "optimizer_projection_residual": -7.290066265930317e-09,
+    "optimizer_projection_tolerance": 0.0005,
+    "optimizer_reported_preclip_grad_norm": 7.010443210601807,
+    "postcast_regularizer_delta_l2_norm": 0.007009164895862341,
+    "postcast_regularizer_delta_max_abs": 0.0008768439292907715,
+    "postcast_values_different_from_ppo": 3546759445,
+    "ppo_gradient_l2_norm": 7.009163856506348,
+    "regularizer_to_ppo_norm_ratio": 0.001,
+    "replays": {
+      "sphere": {
+        "feature_different_values": 70662245,
+        "feature_relative_l2_difference": 0.01851105192592637,
+        "feature_relative_max_difference": 0.027472527472527472,
+        "feature_total_values": 81100800,
+        "identity_matches": 200,
+        "microbatches": 200,
+        "raw_surrogate_relative_difference": 1.5156007676104542e-05,
+        "raw_surrogate_sum": 21773214.0,
+        "surrogate_sum": 5447464.5
+      }
+    },
+    "sphere_gradient_l2_norm": 616071552.0,
+    "target_count": 1,
+    "target_layer_indices": [
+      31
+    ]
+  }
+}

@@ -1,0 +1,31 @@
+{
+  "publication_note": "JSON values are copied from the completed formal run. Machine-local model, evidence, registry paths and hostname are replaced in the public copy; source and public SHA256 values are recorded separately.",
+  "published_artifact_sha256": {
+    "after-test100.json": "dd0fba9fb7021ade090069a2cf480050b081ef0154fa68e5ee9b42745e612d0a",
+    "checkpoint-inventory.json": "5ba593d4ef4edb0845094a0bf70edfbc38b31b50f7026298dd4ddc89439a1e0c",
+    "parameter-evidence.json": "963fc6b8e2eb8e55c36c601fc3e2d4a509faacca05e2cf7b47397e2ee281fe43",
+    "pipeline-exit.json": "76fa3c58a5ba856095c53477adb809ef99e1ba1db961903fca1021491db41640",
+    "result-status.json": "b780d1217c3adc493eb6cc9129e0a979ffe5201c9e22d6f16be6155577dad7ba",
+    "run-contract.json": "bc9f62559528215be8dc0eb65e58143604f06451525f4effab0eed1be1364cf2",
+    "training-complete.json": "c1bec01cbdd423ef18edd944ab3551aef3a967fb365d3ea3df65d7e07162b457",
+    "training-evidence.json": "155bf31bee6fe1523a6b008e6e067c10119085fb73376b6102b714903c345cfe",
+    "worker-evidence.json": "71a05cd8da442d4e394edc06608ce3f112941da3f4ce7e48a1ff0c57ddd30ade"
+  },
+  "run_id": "iatoy-sphere-last-adaptive-qwen35-4b-one-step-20260917-run3",
+  "schema": "intent_alignment_sphere_public_arm_manifest_v1",
+  "source_artifact_sha256": {
+    "after-test100.json": "ce67c1a6c33f96bfd69bcdc58fd0d216366efd4c6f95d77c1166bf55196739e0",
+    "checkpoint-inventory.json": "5ba593d4ef4edb0845094a0bf70edfbc38b31b50f7026298dd4ddc89439a1e0c",
+    "parameter-evidence.json": "c3f1d61a40c1af7fe0360cbf07e51013505be818777c24f39133e2528ecaf8fc",
+    "pipeline-exit.json": "40cbd391ae98aed0e4f0c0429ad31e509d3893fbc5c51acbf4969f1a3e2abf8a",
+    "result-status.json": "b780d1217c3adc493eb6cc9129e0a979ffe5201c9e22d6f16be6155577dad7ba",
+    "run-contract.json": "086707f3d9130cacd3d0f0da9f6e31257ca0c5c6bc36dcf3a0d65526d27edc0d",
+    "training-complete.json": "c1bec01cbdd423ef18edd944ab3551aef3a967fb365d3ea3df65d7e07162b457",
+    "training-evidence.json": "155bf31bee6fe1523a6b008e6e067c10119085fb73376b6102b714903c345cfe",
+    "worker-evidence.json": "f02a356ac3ff376a978a249a0c81f09b23612d2f978dfd2e6ae7298133474949"
+  },
+  "source_commit": "9de98fc8f9b2433c332c94d7ab9f5ffcbaee7a35",
+  "source_id": "sphere-9c1448ba45bfcb1e66ae",
+  "source_manifest_sha256": "9c1448ba45bfcb1e66ae2c476b83838b60a915752ed24eec611b5ac17f01dfc8",
+  "variant": "sphere_dense_last_adaptive_v1"
+}

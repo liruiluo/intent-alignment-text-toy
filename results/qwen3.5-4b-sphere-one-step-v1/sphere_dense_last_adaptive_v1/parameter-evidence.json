@@ -1,0 +1,181 @@
+{
+  "after_config_sha256": "30d5f6ed88428ee7aec02541107db02b2da1ec9b1ef88ded6f578f4cd9add596",
+  "after_path": "global_step_1/actor/huggingface",
+  "allowed_config_normalization": {
+    "/bos_token_id": {
+      "after": null,
+      "before": "__MISSING__"
+    },
+    "/dtype": {
+      "after": "bfloat16",
+      "before": "__MISSING__"
+    },
+    "/eos_token_id": {
+      "after": 248046,
+      "before": "__MISSING__"
+    },
+    "/pad_token_id": {
+      "after": 248044,
+      "before": "__MISSING__"
+    },
+    "/text_config/bos_token_id": {
+      "after": null,
+      "before": "__MISSING__"
+    },
+    "/text_config/mtp_num_hidden_layers": {
+      "after": 0,
+      "before": 1
+    },
+    "/text_config/pad_token_id": {
+      "after": null,
+      "before": "__MISSING__"
+    },
+    "/text_config/partial_rotary_factor": {
+      "after": 0.25,
+      "before": "__MISSING__"
+    },
+    "/transformers_version": {
+      "after": "5.5.3",
+      "before": "4.57.0.dev0"
+    },
+    "/vision_config/dtype": {
+      "after": "bfloat16",
+      "before": "__MISSING__"
+    }
+  },
+  "base_config_sha256": "ddc63e1c717afa86c865bb5e01313d89d72bb53b97ad4a8a03ba8510c0621670",
+  "base_path": "Qwen3.5-4B frozen base checkpoint",
+  "changed_probe_count": 6,
+  "created_at_utc": "2026-09-17T07:55:09.947285+00:00",
+  "effective_bfloat16_changed_value_count": 8,
+  "effective_bfloat16_weights_changed": true,
+  "evaluated_weight_files": {
+    "after": [
+      {
+        "bytes": 18157156344,
+        "name": "model.safetensors",
+        "sha256": "03520d1730b1d69d4043d31cfe8a2b4b961ca1422d8c9c9ad3e7e505cac11907",
+        "shard_id": "model.safetensors"
+      }
+    ],
+    "before": [
+      {
+        "bytes": 5329398688,
+        "name": "model.safetensors-00001-of-00002.safetensors",
+        "sha256": "26a93f066e1916adb13453dae5a0c707c0fbc71299ed98779571a907b8e74c61",
+        "shard_id": "00001-of-00002"
+      },
+      {
+        "bytes": 3990429408,
+        "name": "model.safetensors-00002-of-00002.safetensors",
+        "sha256": "cb544bd9bfae93dc59b0f22b292f5933573854a7f9b97835c67060d7d910e188",
+        "shard_id": "00002-of-00002"
+      }
+    ]
+  },
+  "excluded_base_mtp_tensor_count": 15,
+  "policy_core_key_sets_equal": true,
+  "policy_core_tensor_count": 426,
+  "probe_rule": "input_layernorm weights at layers 0,1,8,16,24,31",
+  "probes": [
+    {
+      "after_dtype": "torch.float32",
+      "after_float32_sha256": "1e6d0dbe12f36897a60e10816fdc69423cd7f03c06c668358550f2ba1f2e52fa",
+      "base_dtype": "torch.bfloat16",
+      "base_float32_sha256": "aa56dd8ccbf8a5c79749072dc1e2d95b6fc973bc7288e121e3730b3352323d6d",
+      "changed_float32_values": 2560,
+      "effective_bfloat16_changed_values": 0,
+      "max_abs_delta": 1.0132789611816406e-06,
+      "mean_abs_delta": 9.96255039353855e-07,
+      "name": "model.language_model.layers.0.input_layernorm.weight",
+      "shape": [
+        2560
+      ]
+    },
+    {
+      "after_dtype": "torch.float32",
+      "after_float32_sha256": "6771bdbd0b7b7d8c9cf62dc9bc448cfd62a21dffed5d02408544313b321ea8d6",
+      "base_dtype": "torch.bfloat16",
+      "base_float32_sha256": "5830552f6611af94e6bbe207dab4067111b7c7e8a3b827f04a88f5162477fcdc",
+      "changed_float32_values": 2560,
+      "effective_bfloat16_changed_values": 0,
+      "max_abs_delta": 1.0132789611816406e-06,
+      "mean_abs_delta": 9.931675322150113e-07,
+      "name": "model.language_model.layers.1.input_layernorm.weight",
+      "shape": [
+        2560
+      ]
+    },
+    {
+      "after_dtype": "torch.float32",
+      "after_float32_sha256": "ee231a4152831ef5af73defabfa6186c74ee5b14149698b61a136567ed5c4b20",
+      "base_dtype": "torch.bfloat16",
+      "base_float32_sha256": "3d70fc08c1db2e82cc69b762119e0db0da45fc8908a84ca3c8d358df6d47ec02",
+      "changed_float32_values": 2560,
+      "effective_bfloat16_changed_values": 2,
+      "max_abs_delta": 1.0132789611816406e-06,
+      "mean_abs_delta": 9.918709338307963e-07,
+      "name": "model.language_model.layers.8.input_layernorm.weight",
+      "shape": [
+        2560
+      ]
+    },
+    {
+      "after_dtype": "torch.float32",
+      "after_float32_sha256": "9e40e8ef39f77e4495f3528fe00af30fdf8ba99db5cdf1c40290337617d7ed5d",
+      "base_dtype": "torch.bfloat16",
+      "base_float32_sha256": "23a7c5c405f4843efea5a618ddb8ba5d0094d0134acf97ef3b9d5cb88b01298d",
+      "changed_float32_values": 2560,
+      "effective_bfloat16_changed_values": 6,
+      "max_abs_delta": 1.0132789611816406e-06,
+      "mean_abs_delta": 9.914576821756782e-07,
+      "name": "model.language_model.layers.16.input_layernorm.weight",
+      "shape": [
+        2560
+      ]
+    },
+    {
+      "after_dtype": "torch.float32",
+      "after_float32_sha256": "e488b292c505ce8a34a6a17bd075dd68e5a2a647db7d87d1204daec3be0efb2a",
+      "base_dtype": "torch.bfloat16",
+      "base_float32_sha256": "95d741bcbb33a3feed922a88cebd6bdb68365a3c475aec09fc799721f74560a8",
+      "changed_float32_values": 2560,
+      "effective_bfloat16_changed_values": 0,
+      "max_abs_delta": 1.0132789611816406e-06,
+      "mean_abs_delta": 9.877563797999755e-07,
+      "name": "model.language_model.layers.24.input_layernorm.weight",
+      "shape": [
+        2560
+      ]
+    },
+    {
+      "after_dtype": "torch.float32",
+      "after_float32_sha256": "d5f2bc8a185d811083d62479e10abaf2038b2238950dd24f851be23b8ef5020e",
+      "base_dtype": "torch.bfloat16",
+      "base_float32_sha256": "1572f33c5e7b2448ebd65461b1f029a58b8ae2011a92b1bc5292ffe3e2854e58",
+      "changed_float32_values": 2560,
+      "effective_bfloat16_changed_values": 0,
+      "max_abs_delta": 1.0132789611816406e-06,
+      "mean_abs_delta": 9.951276069841697e-07,
+      "name": "model.language_model.layers.31.input_layernorm.weight",
+      "shape": [
+        2560
+      ]
+    }
+  ],
+  "schema": "intent_alignment_semantic_parameter_evidence_v2",
+  "serialization": {
+    "after_files": [
+      "model.safetensors"
+    ],
+    "before_files": [
+      "model.safetensors-00001-of-00002.safetensors",
+      "model.safetensors-00002-of-00002.safetensors"
+    ]
+  },
+  "vision_tensor_count": {
+    "after": 297,
+    "before": 297
+  },
+  "weights_changed": true
+}

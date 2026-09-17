@@ -9,6 +9,23 @@ Agent: RIGHT  -> 环境坐标 (2, 0)
 Agent: RIGHT  -> 环境坐标 (3, 0)，成功并自动结束
 ```
 
+## Dense SPHERE 三臂单卡实测（2026-09-17）
+
+在 veRL `v0.9.0`（commit `483b8a009ba3a97563edee3a19887e4862b8094a`）上，已完成 SPHERE 及两个消融实验。三个实验臂复用同一张现有 B300 顺序运行，每臂都只训练 **1 个 optimizer/global update**：
+
+| 实验臂 | 作用层 / α | 训练采样 | 更新数 | 训练后 test100 |
+|---|---|---:|---:|---:|
+| SPHERE | 最后一层 / 自适应 α | 800 trajectories | **1** | **100/100** |
+| All hidden expert layers | 全部 32 层 / 自适应 α | 800 trajectories | **1** | **100/100** |
+| 固定 α 消融 | 最后一层 / `α=1` | 800 trajectories | **1** | **100/100** |
+
+三臂的 worker evidence、梯度组装、checkpoint、参数变化和 pipeline exit 均通过审计；没有申请新卡。训练前已经是 100/100，所以这里证明的是三种实现真实执行并保持能力，不是单步训练提点，也不是三者优劣排序。
+
+- 实验协议：[`docs/SPHERE_ONE_STEP_PROTOCOL.md`](docs/SPHERE_ONE_STEP_PROTOCOL.md)
+- 三臂结果与轻量证据：[`results/qwen3.5-4b-sphere-one-step-v1/`](results/qwen3.5-4b-sphere-one-step-v1/)
+- 一键核验：`PYTHONPATH=src python3 scripts/verify_sphere_published_results.py`
+- Windows 单文件演示：[`showcase/intent-alignment-showcase.html`](showcase/intent-alignment-showcase.html)
+
 ## v2 单卡实测结果
 
 | 指标 | 结果 |

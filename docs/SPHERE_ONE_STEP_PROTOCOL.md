@@ -110,3 +110,34 @@ step 所消费的梯度：
 
 若三臂都保持 100%，结论只能是“SPHERE 三种实现均真实参与一次更新且保持 toy
 能力”，不能声称比普通 GRPO 提点。
+
+## 正式单步结果（2026-09-17）
+
+三个实验臂均复用同一张现有 NVIDIA B300 顺序完成；每臂都是 400 条训练题、`rollout.n=2`、800 trajectories / 400 GRPO groups，并且只有 1 个 optimizer/global update。训练完成回执落盘后才运行冻结 test100。
+
+| 实验臂 | mixed groups | 目标层数 | `||g_ppo||` | `||g_sphere||` | λ | replay L2 / max | test100 |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| `sphere_dense_last_adaptive_v1` | 61 | 1 | 6.248408 | 613,299,136 | 1.0188e-11 | 1.8567% / 3.0556% | **100/100** |
+| `sphere_dense_all_hidden_adaptive_v1` | 60 | 32 | 6.293316 | 633,554,944 | 9.9333e-12 | 1.9848% / 3.5112% | **100/100** |
+| `sphere_dense_last_fixed_alpha_v1` | 67 | 1 | 7.009164 | 616,071,552 | 1.1377e-11 | 1.8511% / 2.7473% | **100/100** |
+
+三臂均满足：
+
+- worker evidence `status=passed`，所有运行时检查为 true；
+- `global_step=1`、`optimizer_updates_actual=1`、checkpoint `global_step_1` 完整；
+- 组装后正则梯度增量非零，全张量组装 L2 残差为 0；
+- activation replay 的整体相对 L2 < 5%、整体相对最大差异 < 10%、raw surrogate 偏差 < 0.1%；
+- FP32 参数变化和 BF16 有效参数变化均成立；
+- pipeline exit code 为 0，训练后 test100 均达到 100/100。
+
+公开摘要、逐题轨迹和文件哈希见 [`results/qwen3.5-4b-sphere-one-step-v1/`](../results/qwen3.5-4b-sphere-one-step-v1/)，可运行：
+
+```bash
+PYTHONPATH=src python3 scripts/verify_sphere_published_results.py
+```
+
+重新核验。约 71 GB 的 checkpoint 不提交 Git；每臂的 `checkpoint-inventory.json` 保留文件级大小和 SHA256。
+
+### 结果解释
+
+三臂的 base checkpoint 在训练前已经是 100/100，因此本实验不支持“SPHERE 单步提高成功率”或“三种实现有性能优劣”的结论。可支持的结论是：三种 dense-SPHERE 实现均真实产生非零正则梯度、进入唯一一次 optimizer step、改变了参数，并在冻结文字 toy test100 上保持 100% 成功率。

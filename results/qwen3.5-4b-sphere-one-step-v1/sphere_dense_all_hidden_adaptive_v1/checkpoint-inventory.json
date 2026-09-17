@@ -1,0 +1,67 @@
+{
+  "files": [
+    {
+      "bytes": 15141,
+      "path": "global_step_1/actor/extra_state_world_size_1_rank_0.pt",
+      "sha256": "3598b635994817b785c47c5588b11291c1701c0ab8286ca8c608ac5b9ea5e6b1"
+    },
+    {
+      "bytes": 46,
+      "path": "global_step_1/actor/fsdp_config.json",
+      "sha256": "7315a2057e6b04e0b2e7d6ee8ad070eafd481f3e1029fb9c75c97723b6f98f36"
+    },
+    {
+      "bytes": 7756,
+      "path": "global_step_1/actor/huggingface/chat_template.jinja",
+      "sha256": "a4aee8afcf2e0711942cf848899be66016f8d14a889ff9ede07bca099c28f715"
+    },
+    {
+      "bytes": 2897,
+      "path": "global_step_1/actor/huggingface/config.json",
+      "sha256": "30d5f6ed88428ee7aec02541107db02b2da1ec9b1ef88ded6f578f4cd9add596"
+    },
+    {
+      "bytes": 204,
+      "path": "global_step_1/actor/huggingface/generation_config.json",
+      "sha256": "ff2099b52c62107b0089f3a257159bcf41e0b6f22dfa28dd42e6d674988fb77a"
+    },
+    {
+      "bytes": 18157156344,
+      "path": "global_step_1/actor/huggingface/model.safetensors",
+      "sha256": "9ae07fa5e9c692ff7155f5e81de2bdaab29e8904148399bfcb803ff307aaec35"
+    },
+    {
+      "bytes": 1191,
+      "path": "global_step_1/actor/huggingface/processor_config.json",
+      "sha256": "d89ef49ce9cd37fbf510158e13c1ef063d9286411c1ec9049932dbe0487143b1"
+    },
+    {
+      "bytes": 19989343,
+      "path": "global_step_1/actor/huggingface/tokenizer.json",
+      "sha256": "87a7830d63fcf43bf241c3c5242e96e62dd3fdc29224ca26fed8ea333db72de4"
+    },
+    {
+      "bytes": 1139,
+      "path": "global_step_1/actor/huggingface/tokenizer_config.json",
+      "sha256": "e98f1901ac6f0adff67b1d540bfa0c36ac1a0cf59eb72ed78146ef89aafa1182"
+    },
+    {
+      "bytes": 20700225459,
+      "path": "global_step_1/actor/model_world_size_1_rank_0.pt",
+      "sha256": "aa005f7a93968dc2bd879ceb9e9d2a623bef245c5ee1a8221202cdb6d5651fde"
+    },
+    {
+      "bytes": 36314177691,
+      "path": "global_step_1/actor/optim_world_size_1_rank_0.pt",
+      "sha256": "3284799cd69204fea44709a36d15a15bbd926efdbdbeeee2e1a55be40e7531ae"
+    },
+    {
+      "bytes": 7316,
+      "path": "global_step_1/data.pt",
+      "sha256": "50249e932097a7822deb91f9cf22dde7d0cf248405f0335be9d25fd464d3d757"
+    }
+  ],
+  "global_step": 1,
+  "run_id": "iatoy-sphere-all-hidden-adaptive-qwen35-4b-one-step-20260917-run4",
+  "schema": "intent_alignment_checkpoint_inventory_v1"
+}
