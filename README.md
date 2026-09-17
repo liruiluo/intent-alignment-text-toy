@@ -26,6 +26,83 @@ Agent: RIGHT  -> 环境坐标 (3, 0)，成功并自动结束
 - 一键核验：`PYTHONPATH=src python3 scripts/verify_sphere_published_results.py`
 - Windows 单文件演示：[`showcase/intent-alignment-showcase.html`](showcase/intent-alignment-showcase.html)
 
+## 一条命令复现 SPHERE 三臂
+
+[`scripts/reproduce_sphere_three_arms.py`](scripts/reproduce_sphere_three_arms.py) 是结题复现入口。它在**一张已经分配好的 GPU** 上依次运行三个实验臂，不申请或释放计算资源。每个实验臂的顺序固定为：
+
+```text
+训练 → 训练审计 → test100 → 最终审计
+```
+
+其中训练阶段固定为 400 条训练题、`rollout.n=2`（800 trajectories / 400 GRPO groups）和恰好 1 个 optimizer/global update。只有 `training-complete.json` 通过后才会生成训练后 test100；任一实验臂不是 `global_step=1` 或不是 `100/100`，统一脚本都会非零退出。
+
+### 1. 准备冻结源码和运行时
+
+```bash
+git clone https://github.com/liruiluo/intent-alignment-text-toy.git
+cd intent-alignment-text-toy
+git checkout sphere-one-step-repro-v1
+
+git clone --branch v0.9.0 https://github.com/volcengine/verl.git /path/to/verl-v0.9.0
+test "$(git -C /path/to/verl-v0.9.0 rev-parse HEAD)" = \
+  483b8a009ba3a97563edee3a19887e4862b8094a
+```
+
+入口要求当前 `HEAD` 正好带有 annotated tag `sphere-one-step-repro-v1`；任意其他干净分支或提交都会被拒绝。
+
+复现实验使用的运行时为 Python `3.12.12`、PyTorch `2.11.0+cu130`、Transformers `5.5.3`、SGLang `0.5.12`、TransferQueue `0.1.8` 和 CUDA `13.x`，硬件为 1×NVIDIA B300。入口会在训练前逐项核对 release tag、veRL commit、运行时版本、Qwen3.5-4B 权重与 tokenizer/chat-template hash，以及数据 hash；任一项不符就停止。精确训练 parquet 已随仓库放在 [`data/verl-v0.9.0/`](data/verl-v0.9.0/)，不需要依赖本机 PyArrow 重新序列化。
+
+### 2. 顺序运行三个实验臂
+
+```bash
+export VERL_ROOT=/path/to/verl-v0.9.0
+export MODEL_PATH=/path/to/Qwen3.5-4B
+export PYTHON_BIN=/path/to/python3.12
+export CUDA_HOME=/path/to/cuda-13
+export RUN_ROOT=/path/to/output/iatoy-sphere-reproduction
+
+# 如果 TransferQueue 安装在独立 overlay，再设置这一项；已装进 PYTHON_BIN 时省略。
+export IATOY_EXTRA_PYTHONPATH=/path/to/transfer_queue/site-packages
+
+# 只选择现有单卡；脚本本身不含任何申请或释放 GPU 的命令。
+export IATOY_GPU=0
+
+# 可先只做完整输入/runtime/GPU 预检，不启动训练。
+"$PYTHON_BIN" scripts/reproduce_sphere_three_arms.py --preflight-only
+
+# 正式串行运行三臂。
+"$PYTHON_BIN" scripts/reproduce_sphere_three_arms.py --run-tag final-repro-01
+```
+
+脚本按以下顺序从同一个 Qwen3.5-4B base 独立启动，前一臂完全结束后才开始后一臂：
+
+1. `sphere_dense_last_adaptive_v1`
+2. `sphere_dense_all_hidden_adaptive_v1`
+3. `sphere_dense_last_fixed_alpha_v1`
+
+运行前可在不使用 GPU 的情况下查看冻结计划：
+
+```bash
+python3 scripts/reproduce_sphere_three_arms.py --print-plan
+```
+
+### 3. 查看复现结果
+
+成功时终端最后输出：
+
+```text
+REPRODUCTION_COMPLETE summary=/path/to/output/iatoy-sphere-reproduction/reproduction-summary.json
+sphere_dense_last_adaptive_v1: update=1 test=100/100
+sphere_dense_all_hidden_adaptive_v1: update=1 test=100/100
+sphere_dense_last_fixed_alpha_v1: update=1 test=100/100
+```
+
+每个实验目录保留 `global_step_1` checkpoint、800 条 rollout、SPHERE worker evidence、参数变化审计、训练完成回执、逐题 test100 轨迹和最终结果。实测每臂约 71 GiB，三臂约 213 GiB，因此 `RUN_ROOT` 必须位于仓库之外、是空目录，并至少保留 256 GiB 空闲空间。脚本不会覆盖已有结果；失败后请换一个新的空 `RUN_ROOT`，`--run-tag` 只用于实验目录命名。已发表结果无需 GPU，可单独核验：
+
+```bash
+PYTHONPATH=src python3 scripts/verify_sphere_published_results.py
+```
+
 ## v2 单卡实测结果
 
 | 指标 | 结果 |

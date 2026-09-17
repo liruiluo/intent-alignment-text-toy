@@ -111,6 +111,21 @@ step 所消费的梯度：
 若三臂都保持 100%，结论只能是“SPHERE 三种实现均真实参与一次更新且保持 toy
 能力”，不能声称比普通 GRPO 提点。
 
+## 公开复现入口
+
+仓库提供统一入口 [`scripts/reproduce_sphere_three_arms.py`](../scripts/reproduce_sphere_three_arms.py)。它固定按 last/adaptive、all-hidden/adaptive、last/fixed-alpha 的顺序在同一张可见 GPU 上串行运行，并对每臂执行：
+
+```text
+复用同 base 的冻结 before-test100
+→ 解析并保存 veRL 配置
+→ 1 个 optimizer/global update
+→ 参数变化与训练证据审计
+→ global_step_1 上的冻结 test100
+→ >=95 门与报告值 100/100 的最终核对
+```
+
+复现入口不包含 9N 或其他平台的资源申请/释放逻辑；调用者须先进入一张已有的空闲 B300。精确 parquet 输入提交在 `data/verl-v0.9.0/`，入口还会核对 veRL、runtime、base checkpoint 和数据 SHA256。完整命令及环境变量见顶层 [`README.md`](../README.md#一条命令复现-sphere-三臂)。
+
 ## 正式单步结果（2026-09-17）
 
 三个实验臂均复用同一张现有 NVIDIA B300 顺序完成；每臂都是 400 条训练题、`rollout.n=2`、800 trajectories / 400 GRPO groups，并且只有 1 个 optimizer/global update。训练完成回执落盘后才运行冻结 test100。

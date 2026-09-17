@@ -28,6 +28,16 @@
 - 硬件：复用同一张现有 NVIDIA B300，三个实验臂顺序运行；未申请新卡
 - 显式 reasoning：关闭（`thinking=false`）
 
+## 从训练重新复现
+
+需要重新执行三臂，而不只是核验本目录时，运行仓库根目录的统一入口：
+
+```bash
+"$PYTHON_BIN" scripts/reproduce_sphere_three_arms.py --run-tag final-repro-01
+```
+
+所需环境变量、冻结依赖和完整输出说明见顶层 [`README.md`](../../README.md#一条命令复现-sphere-三臂)。
+
 ## 可审计文件
 
 - [`summary.json`](summary.json)：三臂统一摘要与精确 source/public SHA256；
